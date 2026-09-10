@@ -2,18 +2,43 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://etvrquzjlgzmysbxlrev.supabase.co">
+<link rel="dns-prefetch" href="https://etvrquzjlgzmysbxlrev.supabase.co">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b3d3a">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
 <script src="assets/theme-toggle.js"></script>
+<script src="assets/idle-logout.js"></script>
+<script src="assets/register-sw.js"></script>
 <title>Ri'aya — Duty Doctor</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="assets/vendor/supabase-js.min.js"></script>
+<script src="assets/vendor/pdf.min.js" defer></script>
+<script src="assets/vendor/tesseract/tesseract.min.js" defer></script>
 <link rel="stylesheet" href="assets/design-system.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
+<link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <style>
   body {
     margin: 0; background: var(--paper); color: var(--ink); display: flex; min-height: 100vh;
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Shown immediately on load (pure CSS/HTML, no JS needed) so the page is
+     never a blank white screen while connecting to Supabase — hidden by
+     init() once real content is ready, or replaced by the connection-
+     trouble retry screen if the connection genuinely fails. */
+  .app-boot-loader {
+    position: fixed; inset: 0; z-index: 10000; background: var(--paper);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  }
+  .app-boot-loader img { width: 56px; height: 56px; border-radius: 14px; }
+  .app-boot-spinner {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 3px solid var(--line); border-top-color: var(--teal-600, #14746b);
+    animation: app-boot-spin 0.8s linear infinite;
+  }
+  @keyframes app-boot-spin { to { transform: rotate(360deg); } }
+  body.app-ready .app-boot-loader { display: none; }
 
   nav {
     width: 220px; background: var(--teal-950); color: #F8FAFC;
@@ -23,11 +48,19 @@
   }
   nav .brand { padding: 0 24px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
   nav .brand img { width: 34px; height: 34px; border-radius: 10px; background: #fff; padding: 3px; object-fit: contain; flex-shrink: 0; }
+  /* Two logo variants, toggled by viewport — see the desktop-only block
+     below. Mobile keeps the original white-boxed logo; desktop switches
+     to a transparent-background white icon that doesn't need the box. */
+  nav .brand .brand-logo-desktop { display: none; }
+  nav .brand .brand-logo-mobile { display: block; }
 
   .sidebar-profile {
     display: flex; align-items: center; gap: 10px; padding: 0 24px 20px;
     margin-bottom: 8px; border-bottom: 1px solid var(--line);
+    width: 100%; box-sizing: border-box; background: none; border-left: none; border-right: none; border-top: none;
+    cursor: pointer; text-align: left; font-family: var(--font); transition: opacity 0.15s ease;
   }
+  .sidebar-profile:hover { opacity: 0.85; }
   .sidebar-profile #sidebar-profile-photo .avatar { width: 34px; height: 34px; font-size: 12px; }
   .sidebar-profile #sidebar-profile-name { font-size: 12.5px; font-weight: 600; color: #F8FAFC; opacity: 0.92; line-height: 1.3; }
   nav .brand .ar { font-size: 18px; font-weight: 600; }
@@ -35,9 +68,31 @@
 
   .nav-btn { background: transparent; border: none; color: #CBD5E1; text-align: left; padding: 13px 24px; font-size: 14px; cursor: pointer; opacity: 0.85; border-left: 3px solid transparent; transition: opacity 0.25s ease, background 0.25s ease, color 0.25s ease; }
   .nav-btn:hover { opacity: 1; background: rgba(22,163,74,0.08); color: #F8FAFC; }
-  .nav-btn.active { opacity: 1; background: rgba(22,163,74,0.12); border-left-color: var(--primary); color: #F8FAFC; font-weight: 600; }
+  .nav-btn.active { opacity: 1; background: rgba(22,163,74,0.12); border-left-color: var(--teal-700); color: #F8FAFC; font-weight: 600; }
   .nav-spacer { flex: 1; }
   #logout-btn { margin: 0 24px; background: transparent; border: 1px solid var(--line); color: #CBD5E1; padding: 9px 12px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease; }
+
+  /* ── Desktop-only sidebar refresh ──────────────────────────────────
+     Replaces the hard divider lines under the logo/profile with soft
+     rounded grouping instead, and turns the active nav item into a
+     rounded pill instead of a left-border tick. Scoped to a min-width
+     query so the mobile off-canvas drawer (which reuses this exact
+     markup, just repositioned) keeps its original look untouched. ── */
+  @media (min-width: 768px) {
+    nav .brand { border-bottom: none; margin-bottom: 6px; padding-bottom: 10px; }
+    nav .brand .brand-logo-desktop { display: block; background: none; padding: 0; }
+    nav .brand .brand-logo-mobile { display: none; }
+
+    .sidebar-profile {
+      border-bottom: none; margin: 4px 12px 14px; padding: 10px 12px;
+      border-radius: 10px; background: rgba(255,255,255,0.05); width: auto;
+    }
+    .sidebar-profile:hover { background: rgba(255,255,255,0.08); opacity: 1; }
+
+    .nav-btn { margin: 0 12px; padding: 10px 12px; border-radius: 8px; border-left: none; }
+    .nav-btn:hover { background: rgba(255,255,255,0.06); }
+    .nav-btn.active { background: rgba(31,158,143,0.16); border-left: none; }
+  }
   #logout-btn:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.35); color: #FECACA; }
 
   main { flex: 1; padding: 40px; max-width: 1100px; width: 100%; min-width: 0; box-sizing: border-box; overflow-x: hidden; }
@@ -45,6 +100,7 @@
   .tab-panel.active { display: block; animation: fadein 0.18s ease; }
   @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
   h1.page-title { font-size: 22px; font-weight: 600; color: var(--heading); margin: 0; }
+  h1.page-title#greeting-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
   /* Typewriter caret shown on the greeting while it's "typing" */
   .typing-caret::after {
@@ -67,8 +123,9 @@
   .dot.on-shift { background: var(--green-500); }
   .dot.off-shift { background: var(--muted); }
 
-  .swap-btn { font-size: 12px; padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface-alt); cursor: pointer; color: var(--ink); transition: background 0.25s ease, border-color 0.25s ease; }
-  .swap-btn:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+  .swap-btn { font-size: 12px; padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--red-500); background: var(--red-500); cursor: pointer; color: #fff; font-weight: 600; transition: background 0.25s ease, border-color 0.25s ease, transform 0.12s ease; }
+  .swap-btn:hover { background: var(--red-600, #b91c1c); border-color: var(--red-600, #b91c1c); }
+  .swap-btn:active { transform: scale(0.97); }
 
   .empty-note { color: var(--muted-soft); font-size: 13.5px; padding: 20px 0; }
   .coming-soon { color: var(--muted-soft); font-size: 14px; padding: 60px 0; text-align: center; }
@@ -86,16 +143,26 @@
   .aoun-reco-header-btn:hover { box-shadow: 0 4px 14px var(--aoun-glow); transform: translateY(-1px); }
   .aoun-reco-header-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red-500); display: none; flex-shrink: 0; }
   .aoun-reco-header-btn .dot.show { display: block; }
+  .aoun-reco-below-btn { width: 100%; justify-content: center; padding: 12px 14px; margin-bottom: 20px; font-size: 13px; }
   @media (max-width: 767px) {
     .home-header-row { align-items: flex-start; }
-    .home-header-actions { width: 100%; justify-content: space-between; }
+    .home-header-actions { width: 100%; justify-content: flex-end; }
     .aoun-reco-header-btn { font-size: 11.5px; padding: 7px 12px; }
+    .aoun-reco-below-btn { font-size: 12.5px; padding: 11px 12px; }
   }
   .notif-wrap { position: relative; }
   .notif-bell { background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 8px 12px; font-size: 16px; cursor: pointer; position: relative; color: var(--muted-strong); transition: border-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease; }
   .notif-bell:hover { border-color: var(--line-strong); box-shadow: var(--shadow-sm); color: var(--ink); }
   .notif-badge { position: absolute; top: -4px; right: -4px; background: var(--red-500); color: #fff; font-size: 10px; font-weight: 700; line-height: 1.4; border-radius: 10px; padding: 1px 5px; display: none; min-width: 14px; text-align: center; box-shadow: 0 0 0 2px var(--surface-card); }
   .notif-badge.show { display: inline-block; }
+
+  /* The floating theme toggle is fixed top-right, which is exactly where
+     several panels (Notifications, Settings, AI Recommendations, Aoun)
+     also put their own close button — on desktop the two can overlap and
+     fight for the click. Hiding the toggle for as long as any of those
+     panels is open removes the collision entirely, and it reappears the
+     moment the panel closes. */
+  body.overlay-open .theme-toggle-btn:not(.theme-toggle-btn-mobile) { display: none; }
 
   /* ══════════════════════════════════════════════════════════════
      NOTIFICATION CENTER — right slide-over panel
@@ -141,29 +208,6 @@
   .notif-icon-btn:focus-visible { outline: 2px solid var(--aoun-1); outline-offset: 1px; }
   .notif-icon-btn.close-btn:hover { background: rgba(181,68,46,0.08); color: var(--red-500); border-color: rgba(181,68,46,0.18); }
 
-  /* ── AI Daily Summary card ── */
-  .notif-ai-summary {
-    display: flex; flex-direction: column; gap: 8px; padding: 11px 13px; margin-bottom: 12px;
-    border-radius: 12px; border: 1px solid var(--aoun-border);
-    background: linear-gradient(100deg, rgba(22,163,74,0.07), rgba(21,128,61,0.05));
-  }
-  .notif-ai-summary .nas-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--aoun-1); }
-  .notif-ai-summary .nas-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .notif-ai-chip {
-    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
-    padding: 4px 10px; border-radius: var(--radius-full); background: var(--surface, #fff);
-    border: 1px solid var(--line); color: var(--ink); cursor: pointer;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
-  }
-  .notif-ai-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-  .notif-ai-chip .num { font-weight: 800; }
-  .notif-ai-chip.crit { border-color: rgba(181,68,46,0.28); }
-  .notif-ai-chip.crit .num { color: var(--red-500); }
-  .notif-ai-chip.lab .num { color: var(--teal-700); }
-  .notif-ai-chip.shift .num { color: var(--amber-500); }
-  .notif-ai-chip.msg .num { color: var(--heading); }
-  .notif-ai-chip.ai .num { color: var(--aoun-1); }
-
   .notif-search-wrap { position: relative; margin-bottom: 10px; }
   .notif-search-wrap i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--muted-soft); pointer-events: none; }
   .notif-search-wrap input {
@@ -195,9 +239,17 @@
     padding: 14px; display: flex; flex-direction: column; gap: 10px;
     background: var(--paper, var(--surface-alt));
   }
+  .notif-group-label {
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase;
+    color: var(--muted-soft); padding: 2px 2px 2px; margin-top: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .notif-group-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .notif-group-label:first-child { margin-top: 0; }
   .notif-item {
     position: relative; display: flex; align-items: flex-start; gap: 12px;
-    padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 16px 14px 14px; border: 1px solid var(--line); border-radius: 14px;
+    border-left: 3px solid transparent;
     background: var(--surface, #fff);
     font-size: 12.5px; line-height: 1.5; cursor: pointer;
     animation: notif-card-in 0.22s ease;
@@ -207,13 +259,19 @@
   .notif-item:hover { box-shadow: var(--shadow-md, 0 6px 16px rgba(15,23,42,0.1)); transform: translateY(-2px); border-color: var(--line-strong); }
   .notif-item.unread { background: rgba(22,163,74,0.05); border-color: rgba(22,163,74,0.22); }
   .notif-item.unread:hover { background: rgba(22,163,74,0.08); }
+  .notif-item.pr-critical { border-left-color: var(--red-500); }
+  .notif-item.pr-high { border-left-color: var(--amber-500); }
   .notif-item:focus-visible { outline: 2px solid var(--aoun-1); outline-offset: 2px; }
   .notif-icon {
-    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--surface-alt, rgba(15,23,42,0.05)); color: var(--muted-strong); font-size: 15px; line-height: 1;
   }
   .notif-item.unread .notif-icon { background: rgba(22,163,74,0.14); color: var(--aoun-1); }
+  .notif-icon.type-ai { background: rgba(22,163,74,0.14); }
+  .notif-icon.type-lab { background: rgba(15,118,110,0.14); }
+  .notif-icon.type-shift { background: rgba(201,138,62,0.16); }
+  .notif-icon.type-message { background: rgba(15,23,42,0.08); }
   .notif-content { flex: 1 1 auto; min-width: 0; padding-top: 1px; }
   .notif-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .notif-title-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -270,6 +328,33 @@
 
   @media (max-width: 480px) {
     .notif-dropdown { width: 100vw; max-width: 100vw; }
+    .notif-dropdown-header { padding: 14px 14px 10px; }
+    .notif-header-top { margin-bottom: 10px; }
+    .notif-header-top .t { font-size: 15px; }
+    .notif-header-actions { gap: 2px; }
+    .notif-icon-btn { width: 30px; height: 30px; font-size: 14px; }
+    .notif-dropdown-body { padding: 10px; gap: 8px; }
+    .notif-item { padding: 12px 13px 12px 12px; gap: 10px; }
+    .notif-icon { width: 32px; height: 32px; font-size: 14px; }
+    .notif-title { font-size: 12px; }
+    .notif-msg { font-size: 12px; }
+  }
+
+  /* Below ~767px the notification center becomes a floating card, same
+     presentation as the Add Patient modal — centered over a dimmed
+     backdrop that still shows the page behind it, rounded on all four
+     corners, closed with the header's X or a tap on the backdrop. */
+  @media (max-width: 767px) {
+    .notif-dropdown {
+      top: 50%; left: 50%; right: auto; bottom: auto;
+      transform: translate(-50%, -50%) scale(0.96);
+      width: 92vw; max-width: 92vw;
+      height: auto; max-height: 86vh;
+      border-left: none; border-radius: 16px; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(15,23,42,0.35);
+      opacity: 0; transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    .notif-dropdown.in { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   }
 
   /* Doctor info card */
@@ -284,10 +369,11 @@
 
   /* Weekly schedule table */
   table.schedule-table-el { width: 100%; border-collapse: collapse; background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
+  .schedule-swipe-cue { display: none; }
   table.schedule-table-el th, table.schedule-table-el td { padding: 10px 8px; border-top: 1px solid var(--line); font-size: 12.5px; vertical-align: top; }
   table.schedule-table-el thead th { background: var(--surface-alt); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted-strong); text-align: center; position: relative; }
   table.schedule-table-el thead th.today-col { color: var(--heading); font-weight: 700; box-shadow: inset 0 -2px 0 var(--teal-500); }
-  .today-badge { display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px; background: var(--primary); color: #fff; padding: 1px 6px; border-radius: 20px; margin-left: 5px; vertical-align: middle; text-transform: uppercase; }
+  .today-badge { display: inline-block; font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px; background: var(--teal-700); color: #fff; padding: 1px 6px; border-radius: 20px; margin-left: 5px; vertical-align: middle; text-transform: uppercase; }
   table.schedule-table-el td.shift-label-col, table.schedule-table-el th.shift-label-col { text-align: left; padding-left: 14px; font-weight: 600; width: 64px; }
   .schedule-doc-chip { display: block; background: var(--surface-hover); border-radius: 5px; padding: 3px 7px; margin-bottom: 4px; font-size: 11.5px; }
   .schedule-doc-chip.me { background: rgba(22,163,74,0.18); font-weight: 600; }
@@ -296,9 +382,9 @@
   /* Duty doctors filter */
   .filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .filter-btn { padding: 7px 14px; border-radius: var(--radius-full); border: 1px solid var(--line); background: var(--surface-alt); font-size: 12.5px; cursor: pointer; color: var(--muted-strong); transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease; }
-  .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: var(--shadow-sm); }
+  .filter-btn.active { background: var(--teal-700); color: #fff; border-color: var(--teal-700); box-shadow: var(--shadow-sm); }
   .scope-btn { padding: 7px 14px; border-radius: var(--radius-full); border: 1px solid var(--line); background: var(--surface-alt); font-size: 12.5px; cursor: pointer; color: var(--muted-strong); transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease; }
-  .scope-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: var(--shadow-sm); }
+  .scope-btn.active { background: var(--teal-700); color: #fff; border-color: var(--teal-700); box-shadow: var(--shadow-sm); }
 
   /* Exchange requests */
   .request-row { background: var(--surface-card); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 8px; font-size: 13px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; gap: 10px; transition: box-shadow 0.25s ease, border-color 0.25s ease; }
@@ -321,12 +407,12 @@
     display: flex; align-items: center; gap: 10px;
   }
   .chat-list-item:hover { background: var(--surface-hover); }
-  .chat-list-item.selected { background: rgba(22,163,74,0.14); font-weight: 600; border-left: 2px solid var(--primary); }
+  .chat-list-item.selected { background: rgba(22,163,74,0.14); font-weight: 600; border-left: 2px solid var(--teal-700); }
   .chat-list-item .mini-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--teal-700); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; object-fit: cover; }
   .chat-list-item .mini-avatar.head { background: var(--teal-900); }
   .chat-list-item .item-sub { font-size: 11px; color: var(--muted-soft); }
   .chat-unread-badge {
-    margin-left: auto; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700;
+    margin-left: auto; background: var(--teal-700); color: #fff; font-size: 11px; font-weight: 700;
     min-width: 19px; height: 19px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
     padding: 0 5px; flex-shrink: 0;
   }
@@ -586,37 +672,23 @@
   .aoun-severity.moderate { background: var(--amber-100); color: var(--amber-500); }
   .aoun-severity.mild { background: var(--teal-100); color: var(--teal-700); }
 
-  /* ── Patient Insights — AI summary (left) + KPI strip (right) ── */
+  /* ── Patient Insights — KPI strip (the AI summary column was removed) ── */
   .aoun-insights-card {
     border-radius: var(--radius-lg, 16px); overflow: hidden; margin-bottom: 20px;
     background: var(--aoun-surface); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--aoun-border); box-shadow: var(--shadow-sm);
     display: flex; align-items: stretch;
   }
-  .aoun-insights-summary { flex: 1.4; display: flex; gap: 16px; padding: 26px 28px; min-width: 0; }
-  .aoun-insights-summary .ais-icon {
-    flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; font-size: 20px;
-    background: linear-gradient(135deg, var(--aoun-1), var(--aoun-2)); color: #fff;
-    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm);
-  }
-  .aoun-insights-summary .ais-text { min-width: 0; }
-  .aoun-insights-summary .ais-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--aoun-1); margin-bottom: 8px; }
-  .aoun-insights-summary .ais-headline { font-size: 16.5px; font-weight: 700; color: var(--heading); line-height: 1.45; margin-bottom: 12px; }
-  .aoun-insights-summary .ais-headline .num { color: var(--aoun-1); }
-  .aoun-insights-summary .ais-bullets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .aoun-insights-summary .ais-bullets li { font-size: 12.5px; color: var(--muted-strong); padding-left: 15px; position: relative; line-height: 1.55; }
-  .aoun-insights-summary .ais-bullets li::before { content: "•"; position: absolute; left: 0; top: -1px; color: var(--aoun-1); font-weight: 700; font-size: 15px; }
 
   .aoun-insights-kpis {
-    flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
-    border-left: 1px solid var(--aoun-border); background: rgba(255,255,255,0.015);
+    flex: 1; display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 1px; background: var(--aoun-border);
   }
   .aoun-insight-stat {
-    padding: 16px 8px; text-align: center; cursor: default;
+    padding: 18px 8px; text-align: center; cursor: default;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
-    transition: background 0.15s ease; border-bottom: 1px solid var(--aoun-border);
+    transition: background 0.15s ease; background: var(--aoun-surface);
   }
-  .aoun-insight-stat:nth-last-child(-n+3) { border-bottom: none; }
   .aoun-insight-stat:hover { background: var(--surface-hover); }
   .aoun-insight-stat .val { font-size: 22px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   .aoun-insight-stat .lbl { font-size: 10px; color: var(--muted-strong); text-transform: uppercase; letter-spacing: 0.4px; line-height: 1.3; }
@@ -627,11 +699,18 @@
   .aoun-insight-stat.tasks .val { color: var(--aoun-1); }
   .aoun-insight-stat.shift .val { font-size: 15px; color: var(--green-500); }
   @media (max-width: 860px) {
-    .aoun-insights-card { flex-direction: column; }
-    .aoun-insights-summary { padding: 22px 22px 18px; }
-    .aoun-insights-kpis { border-left: none; border-top: 1px solid var(--aoun-border); grid-template-columns: repeat(3, 1fr); }
+    .aoun-insights-kpis { grid-template-columns: repeat(3, 1fr); }
   }
-  @media (max-width: 480px) { .aoun-insights-kpis { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 767px) {
+    /* Table-like strip: swipe horizontally to see the rest instead of wrapping */
+    .aoun-insights-kpis {
+      display: flex; grid-template-columns: none; overflow-x: auto;
+      scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .aoun-insights-kpis::-webkit-scrollbar { display: none; }
+    .aoun-insight-stat { flex: 0 0 116px; min-width: 116px; scroll-snap-align: start; }
+  }
 
   /* ── AI Recommendations slide-over drawer (clinical decision support) ── */
   .aoun-reco-drawer-backdrop {
@@ -647,6 +726,27 @@
     display: flex; flex-direction: column; overflow: hidden;
   }
   .aoun-reco-drawer-backdrop.show .aoun-reco-drawer { transform: translateX(0); }
+
+  /* Below ~767px this becomes the same floating modal-card as
+     Notifications and Settings — centered over a dimmed backdrop you
+     can still see through, rounded on all four corners, instead of a
+     full-screen slide-in that feels like a whole new page. */
+  @media (max-width: 767px) {
+    .aoun-reco-drawer {
+      top: 50%; left: 50%; right: auto; bottom: auto;
+      transform: translate(-50%, -50%) scale(0.96);
+      width: 92vw; max-width: 92vw;
+      height: auto; max-height: 86vh;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(15,23,42,0.35);
+      opacity: 0;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    .aoun-reco-drawer-backdrop.show .aoun-reco-drawer {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+  }
   .aoun-reco-drawer-head {
     display: flex; align-items: center; gap: 12px; padding: 20px 22px;
     background: linear-gradient(100deg, var(--aoun-1), var(--aoun-2)); color: #fff; flex-shrink: 0;
@@ -655,8 +755,20 @@
   .aoun-reco-drawer-head .s { font-size: 11px; opacity: 0.85; margin-top: 2px; }
   .aoun-reco-drawer-close { margin-left: auto; background: rgba(255,255,255,0.16); border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 16px; }
   .aoun-reco-drawer-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; -webkit-overflow-scrolling: touch; }
-  .aoun-reco-section { margin-bottom: 18px; }
-  .aoun-reco-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted-strong); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .aoun-reco-summary-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .aoun-reco-summary-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
+    padding: 5px 10px; border-radius: var(--radius-full); background: var(--surface-alt);
+    border: 1px solid var(--line); color: var(--muted-strong);
+  }
+  .aoun-reco-summary-chip.crit { background: var(--red-100); color: var(--red-500); border-color: transparent; }
+  .aoun-reco-summary-chip.high { background: var(--amber-100); color: var(--amber-500); border-color: transparent; }
+  .aoun-reco-section { margin-bottom: 20px; }
+  .aoun-reco-section-title {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: var(--heading);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
+  }
+  .aoun-reco-section-title .cnt { font-size: 10px; font-weight: 800; color: var(--muted-strong); background: var(--surface-alt); border-radius: var(--radius-full); padding: 1px 7px; }
   .aoun-reco-drawer-item {
     display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border-radius: 10px;
     background: var(--surface-alt); margin-bottom: 6px; cursor: pointer; transition: background 0.15s ease;
@@ -667,10 +779,14 @@
   .aoun-reco-drawer-item .txt .sub { font-size: 11.5px; color: var(--muted-strong); margin-top: 2px; }
 
   .cds-card {
-    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 12px;
     padding: 14px 14px 12px; margin-bottom: 10px; transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .cds-card:hover { border-color: var(--aoun-border); box-shadow: var(--shadow-sm); }
+  .cds-card.critical { border-left-color: var(--red-500); }
+  .cds-card.high { border-left-color: var(--amber-500); }
+  .cds-card.medium { border-left-color: var(--teal-700); }
+  .cds-card.low { border-left-color: var(--green-500); }
   .cds-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
   .cds-card-head .cds-title { font-size: 13px; font-weight: 700; color: var(--ink); line-height: 1.35; }
   .cds-card-head .cds-patient { font-size: 12px; color: var(--muted-strong); margin-top: 2px; }
@@ -706,8 +822,14 @@
   .cds-empty-state .msg { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.5; }
   @media (max-width: 767px) {
     .aoun-reco-drawer { width: 100vw; }
-    .cds-actions { gap: 5px; }
-    .cds-action-btn { flex: 1 1 auto; text-align: center; min-width: calc(50% - 6px); }
+    .aoun-reco-drawer-head { padding: 16px 16px; }
+    .aoun-reco-drawer-body { padding: 12px 12px 20px; }
+    .aoun-reco-summary-row { gap: 5px; margin-bottom: 12px; }
+    .aoun-reco-summary-chip { font-size: 10.5px; padding: 4px 9px; }
+    .cds-card { padding: 12px 12px 10px; }
+    .cds-actions { gap: 5px; display: grid; grid-template-columns: 1fr 1fr; }
+    .cds-action-btn { text-align: center; }
+    .cds-action-btn.primary { grid-column: 1 / -1; }
   }
 
   /* ── Patient snapshot card ── */
@@ -725,7 +847,28 @@
   @media (max-width: 860px) { .patient-snapshot { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 480px) { .patient-snapshot { grid-template-columns: 1fr; } .patient-snapshot .snap-span-2 { grid-column: span 1; } }
 
+  .diagnosis-view { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .diagnosis-edit-btn {
+    flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted-strong); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .diagnosis-edit-btn:hover { background: var(--aoun-1, #16a34a); border-color: var(--aoun-1, #16a34a); color: #fff; }
+  .diagnosis-edit-row { display: flex; flex-direction: column; gap: 8px; }
+  .diagnosis-textarea { width: 100%; resize: vertical; font-family: var(--font); }
+  .diagnosis-edit-actions { display: flex; gap: 8px; }
+  .diagnosis-edit-actions .btn-sm { font-size: 12px; padding: 5px 12px; }
+  .diagnosis-edit-actions .secondary { font-size: 12px; padding: 5px 12px; background: transparent; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); cursor: pointer; }
+  .diagnosis-edit-actions .secondary:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+
   /* ── Professional SOAP note layout ── */
+  .soap-header-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 14px;
+    padding: 14px 16px; border-radius: var(--radius-md); margin-bottom: 4px;
+    background: var(--surface-alt); border: 1px solid var(--line);
+  }
+  .soap-header-cell .lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted-soft); margin-bottom: 2px; }
+  .soap-header-cell .val { font-size: 13px; font-weight: 600; color: var(--ink); }
   .aoun-soap-wrap { display: flex; flex-direction: column; gap: 14px; }
   .aoun-soap-section { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
   .aoun-soap-section-head {
@@ -738,6 +881,10 @@
     box-sizing: border-box;
   }
   .aoun-soap-section textarea:focus { outline: none; background: rgba(22,163,74,0.03); }
+  .aoun-soap-section textarea::placeholder { color: var(--muted-soft); font-style: italic; opacity: 0.75; }
+  @media (max-width: 480px) {
+    .soap-header-grid { grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 12px; }
+  }
 
   /* ── Aoun proactive panel intro ── */
   .aoun-proactive-brief {
@@ -766,11 +913,41 @@
 
   /* ── PDF Medical Intelligence ── */
   .aoun-pdf-dropzone {
-    border: 1.5px dashed var(--line-strong); border-radius: var(--radius-md); padding: 22px; text-align: center;
-    font-size: 12.5px; color: var(--muted-strong); cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+    border: 1.5px dashed var(--line-strong); border-radius: var(--radius-md); padding: 14px; text-align: center;
+    font-size: 12px; color: var(--muted-strong); cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+    margin-bottom: 12px;
   }
   .aoun-pdf-dropzone:hover, .aoun-pdf-dropzone.dragover { border-color: var(--aoun-1); background: rgba(22,163,74,0.04); }
-  .aoun-pdf-dropzone i { font-size: 22px; display: block; margin-bottom: 6px; color: var(--aoun-1); }
+  .aoun-pdf-dropzone i { font-size: 18px; display: block; margin-bottom: 4px; color: var(--aoun-1); }
+
+  /* ── Labs tab: summary card, attachments gallery, print button ── */
+  .labs-panel-header { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lab-summary-card {
+    display: flex; gap: 10px; flex-wrap: wrap; background: var(--surface-alt);
+    border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 4px;
+  }
+  .lab-summary-stat { flex: 1; min-width: 80px; display: flex; flex-direction: column; gap: 2px; }
+  .lab-summary-num { font-size: 19px; font-weight: 700; color: var(--heading); }
+  .lab-summary-label { font-size: 11px; color: var(--muted-strong); text-transform: uppercase; letter-spacing: 0.4px; }
+  .lab-attachments-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .lab-attachments-grid .file-item { width: 108px; }
+
+  @media print {
+    body > * { display: none !important; }
+    #labs-print-area { display: block !important; position: absolute; top: 0; left: 0; width: 100%; padding: 0; margin: 0; }
+  }
+  #labs-print-area { display: none; }
+  .print-header { margin-bottom: 16px; border-bottom: 2px solid var(--teal-900); padding-bottom: 10px; }
+  .print-header h1 { font-size: 18px; margin: 0 0 4px; }
+  .print-header .meta { font-size: 12.5px; color: #444; }
+  .print-section { margin-bottom: 18px; }
+  .print-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 0 0 8px; }
+  .print-file { margin-top: 8px; page-break-inside: avoid; }
+  .print-file img { max-width: 100%; max-height: 420px; border: 1px solid #ccc; border-radius: 4px; display: block; }
+  .print-file embed { width: 100%; height: 520px; border: 1px solid #ccc; }
+  .print-file-fallback { font-size: 11px; color: #777; margin-top: 2px; }
+  .print-file-name { margin-top: 6px; font-size: 12px; color: #444; }
+
   .aoun-finding-row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
   .aoun-finding-row:last-child { border-bottom: none; }
   .aoun-finding-row .name { font-weight: 700; font-size: 12.5px; color: var(--ink); min-width: 130px; flex-shrink: 0; }
@@ -828,6 +1005,19 @@
   .aoun-ai-risk.critical { background: var(--red-500); color: #fff; }
   .aoun-ai-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
+  /* Wrapper around a PDF analysis card once it's mounted in the patient
+     detail Labs tab — adds a small "Remove" action above the card so the
+     doctor can dismiss an uploaded report's analysis without uploading a
+     new one to replace it. */
+  .aoun-analysis-mounted-wrap { position: relative; }
+  .aoun-analysis-remove-btn {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    background: transparent; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 6px 10px; font-size: 12px; color: var(--muted-strong); cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .aoun-analysis-remove-btn:hover { background: rgba(181,68,46,0.08); border-color: var(--red-500); color: var(--red-500); }
+
   /* ── Feature 2: Proactive toast notifications (top-right, stacked) ── */
   .aoun-toast-stack {
     position: fixed; top: 18px; right: 18px; z-index: 900;
@@ -848,6 +1038,29 @@
   .aoun-toast .close { background: none; border: none; color: var(--muted-soft); cursor: pointer; font-size: 15px; flex-shrink: 0; padding: 0; line-height: 1; }
   .aoun-toast .close:hover { color: var(--ink); }
   @media (max-width: 700px) { .aoun-toast-stack { top: auto; bottom: 88px; right: 12px; left: 12px; width: auto; } }
+
+  /* ── Shift-end sign-out reminder — persistent, doesn't auto-dismiss like
+     a toast, since the whole point is not missing it before walking away
+     from a shared/ward device. ── */
+  .shift-end-reminder {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 950;
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-md);
+    background: var(--surface); border: 1px solid var(--amber-500); box-shadow: var(--shadow-lg);
+    width: 460px; max-width: calc(100vw - 32px);
+    animation: aoun-toast-in 0.28s cubic-bezier(0.2,0.9,0.3,1.2);
+  }
+  .shift-end-reminder .icon { font-size: 20px; flex-shrink: 0; }
+  .shift-end-reminder .body { flex: 1; min-width: 0; }
+  .shift-end-reminder .title { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .shift-end-reminder .sub { font-size: 12px; color: var(--muted-strong); margin-top: 2px; line-height: 1.4; }
+  .shift-end-signout {
+    flex-shrink: 0; background: var(--amber-500); color: #fff; border: none; border-radius: var(--radius-sm);
+    padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .shift-end-signout:hover { opacity: 0.9; }
+  .shift-end-dismiss { flex-shrink: 0; background: none; border: none; color: var(--muted-soft); cursor: pointer; font-size: 16px; padding: 0 2px; }
+  .shift-end-dismiss:hover { color: var(--ink); }
+  @media (max-width: 700px) { .shift-end-reminder { bottom: 84px; } }
 
   /* ── Feature 3: "Why?" recommendation explanation ── */
   .aoun-reco-item { flex-direction: column; align-items: stretch; }
@@ -904,10 +1117,13 @@
     transition: opacity 0.15s ease;
   }
   .lh-test-files .file-item > a:hover .thumb { opacity: 0.82; }
-  .lh-test-files .file-item .fname { font-size: 10.5px; color: var(--muted-strong); margin-top: 4px; word-break: break-word; line-height: 1.35; }
-  .lh-test-files .file-item .flinks { display: flex; gap: 8px; margin-top: 2px; }
+  .lh-test-files .file-item .fname { font-size: 10.5px; color: var(--muted-strong); margin-top: 4px; word-break: break-word; line-height: 1.35; max-height: 4.05em; overflow: hidden; }
+  .lh-test-files .file-item .flinks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; }
   .lh-test-files .file-item .flinks a { font-size: 10px; color: var(--heading); font-weight: 600; text-decoration: none; }
   .lh-test-files .file-item .flinks a:hover { text-decoration: underline; }
+  .lh-test-files .file-item .flinks .aoun-pill.sm { flex: 1 1 100%; justify-content: center; margin-top: 4px !important; white-space: normal; text-align: center; }
+  .file-delete-link { font-size: 10px; color: var(--red-500); font-weight: 700; background: none; border: none; padding: 0; margin: 0; cursor: pointer; line-height: 1; }
+  .file-delete-link:hover { text-decoration: underline; }
 
   /* Patients tab — redesigned */
   .patients-toolbar { display: flex; gap: 10px; margin-bottom: 22px; }
@@ -933,14 +1149,16 @@
   .patient-card { background: var(--surface); border-radius: 10px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(15,32,39,0.07); overflow: hidden; transition: box-shadow 0.15s ease; border: 1px solid transparent; }
   .patient-card:hover { box-shadow: 0 4px 12px rgba(15,32,39,0.1); }
   .patient-card.open { border-color: var(--teal-300); }
-  .patient-summary { padding: 16px 20px; display: flex; align-items: center; gap: 16px; cursor: pointer; }
+  .patient-summary { padding: 16px 20px; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; }
   .patient-summary .info { flex: 1; min-width: 0; }
-  .patient-summary .name-row { display: flex; align-items: center; gap: 10px; }
-  .patient-summary .info .name { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .patient-summary .name-row { display: flex; align-items: center; }
+  .patient-summary .info .name { font-size: 15px; font-weight: 700; color: var(--ink); overflow-wrap: break-word; }
+  .patient-summary .badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
   .patient-id-chip { font-size: 11px; font-family: 'Courier New', monospace; color: var(--heading); background: rgba(22,163,74,0.1); padding: 2px 8px; border-radius: 4px; font-weight: 600; letter-spacing: 0.3px; }
-  .patient-summary .info .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .patient-summary .info .meta { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
   .patient-summary .info .meta-line { line-height: 1.5; }
-  .patient-summary .chevron { font-size: 12px; color: var(--muted); transition: transform 0.15s ease; flex-shrink: 0; }
+  .summary-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .patient-summary .chevron { font-size: 12px; color: var(--muted); transition: transform 0.15s ease; flex-shrink: 0; margin-top: 3px; }
   .patient-card.open .chevron { transform: rotate(180deg); }
 
   .status-pill { font-size: 11px; font-weight: 700; letter-spacing: 0.3px; padding: 4px 11px; border-radius: 20px; text-transform: uppercase; flex-shrink: 0; }
@@ -954,6 +1172,8 @@
     font-size: 13px; cursor: pointer; flex-shrink: 0; transition: background 0.15s ease, border-color 0.15s ease;
   }
   .delete-patient-btn:hover { background: rgba(181,68,46,0.08); border-color: var(--red-500); }
+  .print-order-btn { width: 38px; height: 38px; font-size: 16px; }
+  .print-order-btn:hover { background: rgba(22,163,74,0.08); border-color: var(--aoun-1); }
 
   .patient-detail { display: none; }
   .patient-card.open .patient-detail { display: block; }
@@ -1000,7 +1220,8 @@
 
     /* ── App-style home header ── */
     .home-header-row { flex-wrap: nowrap; gap: 10px; align-items: flex-start; }
-    h1.page-title#greeting-title { font-size: 17px; }
+    .home-header-actions { width: auto; } /* undo the earlier breakpoint's width:100%, which was crushing #greeting-title to zero width in this single-row app-style header */
+    h1.page-title#greeting-title { font-size: 17px; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
     .notif-bell { background: var(--surface); border-radius: 10px; }
 
     /* ── Cards, generally ── */
@@ -1033,6 +1254,25 @@
     table.schedule-table-el th.shift-label-col { font-size: 11px; }
     table.schedule-table-el td.shift-label-col { font-size: 14px; }
     .today-badge { font-size: 8.5px; margin-left: 5px; }
+
+    /* Swipe-to-scroll hint for the weekly schedule — a fading edge plus a
+       small bouncing arrow, so it's obvious there are more days off-screen
+       to the right. Disappears once the person actually scrolls it, and
+       stays hidden for the rest of the session. */
+    .schedule-scroll-hint { position: relative; }
+    .schedule-swipe-cue {
+      display: flex; position: absolute; top: 0; bottom: 0; right: 0; width: 44px; border-radius: 0 14px 14px 0;
+      background: linear-gradient(to right, transparent, var(--surface-card) 65%);
+      align-items: center; justify-content: flex-end; padding-right: 4px;
+      pointer-events: none; color: var(--teal-600); font-size: 18px;
+      animation: schedule-swipe-bounce 1.4s ease-in-out infinite;
+      transition: opacity 0.25s ease;
+    }
+    .schedule-scroll-hint.scrolled .schedule-swipe-cue { opacity: 0; }
+    @keyframes schedule-swipe-bounce {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-5px); }
+    }
     .schedule-doc-chip { padding: 3px 8px; font-size: 11.5px; margin-bottom: 4px; }
 
     .filter-row { gap: 6px; }
@@ -1041,20 +1281,26 @@
 
     .patients-toolbar { flex-direction: column; }
 
-    /* ── Patient card: keep the summary as a single row on mobile too
-       (avatar, name+meta, status/score/delete/chevron) — nothing wraps
-       or drops to a second line, name/meta just shrink to make room. ── */
-    .patient-summary { flex-wrap: nowrap; padding: 14px 10px; gap: 8px; }
-    .patient-summary .info { overflow: hidden; }
-    .patient-summary .info .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+    /* Scope filter row: keep "Check Drug Interaction" on its own full-width
+       line, but force the two scope pills onto one shared row instead of
+       letting flex-wrap drop each long label onto its own line. Their text
+       is set via JS ("All patients of department (4)" etc.) and can run
+       long, so it's truncated with an ellipsis rather than reduced further. */
+    #patient-scope-filter { display: flex; flex-wrap: wrap; }
+    #patient-scope-filter .aoun-pill { flex: 1 1 100%; justify-content: center; }
+    #patient-scope-filter .scope-btn {
+      flex: 1 1 calc(50% - 4px); min-width: 0;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      text-align: center; font-size: 11px; padding: 8px 6px;
+    }
+
+    /* ── Patient card: name gets its own full-width row so it's never
+       cut off; ID chip/status/danger badges sit on a row underneath. ── */
+    .patient-summary { padding: 14px 10px; gap: 8px; }
+    .patient-summary .info .name { font-size: 13.5px; }
     .patient-summary .info .meta { font-size: 10.5px; }
-    .patient-summary .info .meta-line { line-height: 1.45; white-space: nowrap; }
-    .patient-summary .name-row { flex-wrap: nowrap; gap: 6px; }
-    .patient-id-chip { font-size: 10px; padding: 2px 6px; flex-shrink: 0; }
-    .patient-summary .status-pill,
-    .patient-summary .danger-badge,
-    .patient-summary .delete-patient-btn,
-    .patient-summary .chevron { flex-shrink: 0; }
+    .patient-summary .info .meta-line { line-height: 1.45; }
+    .patient-id-chip { font-size: 10px; padding: 2px 6px; }
     .patient-summary .status-pill { font-size: 9px; padding: 4px 7px; }
     .patient-summary .danger-badge { width: 20px; height: 20px; font-size: 10px; }
     .patient-summary .delete-patient-btn { width: 26px; height: 26px; }
@@ -1125,9 +1371,14 @@
   .danger-high { background: rgba(181, 68, 46, 0.14); color: var(--red-500); }
 
   /* Patient detail tabs (Overview / Labs / Notes) */
-  .detail-tabs { display: flex; gap: 6px; padding: 14px 20px 0; border-top: 1px solid var(--line); margin-top: 2px; }
+  .detail-tabs {
+    display: flex; gap: 8px; padding: 14px 20px 10px; border-top: 1px solid var(--line); margin-top: 2px;
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity;
+  }
+  .detail-tabs::-webkit-scrollbar { display: none; }
   .detail-tab-btn {
-    flex: 1; text-align: center; font-size: 12.5px; font-weight: 500; padding: 8px 0;
+    flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start;
+    text-align: center; font-size: 12.5px; font-weight: 500; padding: 9px 18px;
     border-radius: var(--radius-full); border: none; cursor: pointer;
     background: var(--surface-hover); color: var(--muted-strong); transition: background 0.15s ease, color 0.15s ease;
   }
@@ -1253,10 +1504,151 @@
     .lab-modal-body { padding: 16px 16px 20px; }
     .lab-modal-header { padding: 14px 16px; }
   }
+
+  /* ══════════════════════════════════════════════════════════════
+     PROFILE & SETTINGS — slide-over panel (desktop: right drawer,
+     mobile: full screen), mirrors the notification center's pattern.
+     ══════════════════════════════════════════════════════════════ */
+  .settings-overlay {
+    display: none; position: fixed; inset: 0; z-index: 500;
+    background: rgba(15,23,42,0.35); opacity: 0; transition: opacity 0.25s ease;
+  }
+  .settings-overlay.show { display: block; }
+  .settings-overlay.in { opacity: 1; }
+
+  .settings-panel {
+    display: none; flex-direction: column;
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 501;
+    width: 620px; max-width: 96vw; height: 100vh;
+    background: var(--surface); border-left: 1px solid var(--line);
+    box-shadow: -10px 0 36px rgba(15,23,42,0.18);
+    transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.2,0.9,0.3,1);
+  }
+  .settings-panel.show { display: flex; }
+  .settings-panel.in { transform: translateX(0); }
+
+  .settings-header { flex-shrink: 0; padding: 18px 22px; padding-top: max(18px, env(safe-area-inset-top)); border-bottom: 1px solid var(--line); background: var(--surface); }
+  .settings-header-top { display: flex; align-items: center; justify-content: space-between; }
+  .settings-title { font-size: 16px; font-weight: 700; color: var(--heading); display: flex; align-items: center; gap: 8px; }
+  .settings-close-btn { width: 32px; height: 32px; border-radius: 9px; border: none; background: none; color: var(--muted-strong); cursor: pointer; font-size: 16px; }
+  .settings-close-btn:hover { background: rgba(181,68,46,0.08); color: var(--red-500); }
+
+  .settings-body { flex: 1; display: flex; overflow: hidden; }
+  .settings-tabs { width: 190px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 12px 8px; overflow-y: auto; background: var(--surface-alt); }
+  .settings-tab-btn {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px;
+    border: none; background: none; color: var(--muted-strong); font-size: 12.5px; font-weight: 600; cursor: pointer; margin-bottom: 3px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .settings-tab-btn i { font-size: 15px; flex-shrink: 0; }
+  .settings-tab-btn:hover { background: var(--surface-hover); color: var(--ink); }
+  .settings-tab-btn.active { background: var(--teal-900); color: #fff; }
+
+  .settings-content { flex: 1; overflow-y: auto; padding: 22px 26px 40px; -webkit-overflow-scrolling: touch; }
+  .settings-section-title { font-size: 15px; font-weight: 700; color: var(--heading); margin: 0 0 4px; }
+  .settings-section-sub { font-size: 12px; color: var(--muted-strong); margin: 0 0 18px; }
+
+  .settings-field { margin-bottom: 16px; }
+  .settings-field label { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted-strong); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .settings-field input[type="text"], .settings-field input[type="email"], .settings-field input[type="tel"], .settings-field input[type="password"], .settings-field textarea, .settings-field select {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px;
+    font-size: 13.5px; font-family: var(--font); background: var(--surface); color: var(--ink);
+  }
+  .settings-field textarea { min-height: 80px; resize: vertical; }
+  .settings-field input:disabled { background: var(--surface-alt); color: var(--muted); cursor: not-allowed; }
+  .settings-field .hint { font-size: 11px; color: var(--muted-soft); margin-top: 5px; }
+  .settings-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 600px) { .settings-grid-2 { grid-template-columns: 1fr; } }
+
+  .settings-avatar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+  .settings-avatar-row .avatar { width: 68px; height: 68px; font-size: 22px; }
+  .settings-avatar-row .settings-avatar-actions { display: flex; gap: 8px; }
+
+  .settings-save-btn { padding: 10px 20px; background: var(--teal-900); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+  .settings-save-btn:hover { background: var(--teal-700); }
+  .settings-save-btn:disabled { opacity: 0.55; cursor: wait; }
+  .settings-btn-secondary { padding: 9px 16px; background: var(--surface); color: var(--heading); border: 1px solid var(--line-strong); border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .settings-btn-secondary:hover { background: var(--surface-hover); }
+  .settings-btn-danger { padding: 9px 16px; background: transparent; color: var(--red-500); border: 1px solid rgba(181,68,46,0.35); border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .settings-btn-danger:hover { background: rgba(181,68,46,0.08); }
+  .settings-save-note { font-size: 12px; font-weight: 600; color: var(--green-500); margin-left: 10px; }
+  .settings-save-note.is-error { color: var(--red-500); }
+
+  .settings-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .settings-toggle-row:last-child { border-bottom: none; }
+  .settings-toggle-row .str-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .settings-toggle-row .str-sub { font-size: 11px; color: var(--muted-soft); margin-top: 2px; }
+  .settings-toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+  .settings-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .settings-toggle .track { position: absolute; inset: 0; background: var(--line-strong, var(--line)); border-radius: 999px; transition: background 0.15s ease; }
+  .settings-toggle .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.15s ease; }
+  .settings-toggle input:checked + .track { background: var(--aoun-1); }
+  .settings-toggle input:checked ~ .knob { transform: translateX(18px); }
+
+  .settings-avail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .settings-avail-option {
+    display: flex; align-items: center; gap: 9px; padding: 13px 14px; border: 1.5px solid var(--line); border-radius: 10px;
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .settings-avail-option .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .settings-avail-option.active { border-color: var(--teal-700); background: rgba(22,163,74,0.06); }
+  .settings-avail-option .dot.available { background: var(--green-500); }
+  .settings-avail-option .dot.on_duty { background: var(--teal-700); }
+  .settings-avail-option .dot.off_duty { background: var(--muted); }
+  .settings-avail-option .dot.dnd { background: var(--red-500); }
+  .settings-avail-current { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: var(--surface-alt); margin-bottom: 16px; }
+
+  .settings-sig-preview { width: 100%; max-width: 320px; min-height: 100px; border: 1.5px dashed var(--line-strong); border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--surface-alt); margin-bottom: 14px; overflow: hidden; }
+  .settings-sig-preview img { max-width: 100%; max-height: 140px; object-fit: contain; }
+  .settings-sig-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .settings-coming-soon-box {
+    padding: 14px 16px; border-radius: 10px; background: var(--surface-alt); border: 1px dashed var(--line-strong);
+    font-size: 12.5px; color: var(--muted-strong); line-height: 1.6; margin-top: 18px;
+  }
+  .settings-coming-soon-box b { color: var(--heading); }
+
+  .settings-kv-row { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .settings-kv-row:last-child { border-bottom: none; }
+  .settings-kv-row .k { color: var(--muted-strong); font-weight: 600; }
+
+  .settings-fontsize-row, .settings-lang-row { display: flex; gap: 8px; }
+  .settings-fontsize-row button, .settings-lang-row button {
+    flex: 1; padding: 9px 6px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 600; cursor: pointer; color: var(--muted-strong);
+  }
+  .settings-fontsize-row button.active, .settings-lang-row button.active { border-color: var(--teal-700); color: var(--teal-800); background: rgba(22,163,74,0.06); }
+
+  /* Compact mode — a lighter-weight density toggle applied globally */
+  body.compact-mode main { padding: 24px; }
+  body.compact-mode .doctor-row, body.compact-mode .patient-card, body.compact-mode .info-card, body.compact-mode .request-row { padding-top: 9px; padding-bottom: 9px; }
+  body.compact-mode .section-label { margin: 16px 0 8px; }
+
+  @media (max-width: 767px) {
+    .settings-panel {
+      top: 50%; left: 50%; right: auto; bottom: auto;
+      transform: translate(-50%, -50%) scale(0.96);
+      width: 92vw; max-width: 92vw;
+      height: auto; max-height: 86vh;
+      border-left: none; border-radius: 16px; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(15,23,42,0.35);
+      opacity: 0; transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    .settings-panel.in { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    .settings-body { flex-direction: column; }
+    .settings-tabs { width: 100%; display: flex; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 8px; gap: 4px; }
+    .settings-tab-btn { flex-shrink: 0; width: auto; white-space: nowrap; }
+    .settings-content { padding: 18px 16px 32px; }
+    .settings-avail-grid { grid-template-columns: 1fr; }
+  }
 </style>
 <link rel="stylesheet" href="assets/mobile-nav.css">
 </head>
 <body class="has-bottom-nav">
+
+<div id="app-boot-loader" class="app-boot-loader">
+  <img src="assets/logo.png" alt="Ri'aya logo">
+  <div class="app-boot-spinner"></div>
+</div>
 
 <button class="theme-toggle-btn" aria-label="Toggle dark mode"></button>
 
@@ -1264,6 +1656,7 @@
   <div class="mt-brand"><img src="assets/logo.png" alt="Ri'aya logo"><span>رعاية Duty Doctor</span></div>
   <div class="mt-actions">
     <button class="theme-toggle-btn theme-toggle-btn-mobile" aria-label="Toggle dark mode"></button>
+    <button class="hamburger-btn" id="mobile-settings-btn" aria-label="Profile & Settings"><i class="ti ti-user-circle"></i></button>
     <button class="hamburger-btn" id="mobile-logout-btn" aria-label="Sign out"><i class="ti ti-logout"></i></button>
   </div>
 </div>
@@ -1277,15 +1670,21 @@
 </div>
 
 <nav>
-  <div class="brand"><img src="assets/logo.png" alt="Ri'aya logo"><div><span class="ar">رعاية</span><br><span class="en">Duty Doctor</span></div></div>
-  <div class="sidebar-profile">
+  <div class="brand">
+    <img src="assets/logo-icon-white.png" alt="Ri'aya logo" class="brand-logo-desktop">
+    <img src="assets/logo.png" alt="Ri'aya logo" class="brand-logo-mobile">
+    <div><span class="ar">رعاية</span><br><span class="en">Duty Doctor</span></div>
+  </div>
+  <button type="button" class="sidebar-profile" id="sidebar-profile-btn">
     <span id="sidebar-profile-photo"></span>
     <span id="sidebar-profile-name">—</span>
-  </div>
+    <i class="ti ti-settings" style="margin-left:auto; font-size:14px; opacity:0.7;"></i>
+  </button>
   <button class="nav-btn active" data-tab="home">Home</button>
   <button class="nav-btn" data-tab="chat">Chat</button>
   <button class="nav-btn" data-tab="patients">Patients</button>
   <div class="nav-spacer"></div>
+  <button class="nav-btn" id="desktop-settings-btn" style="opacity:0.85;"><i class="ti ti-settings" style="margin-right:8px;"></i>Settings</button>
   <button id="logout-btn">Sign out</button>
 </nav>
 
@@ -1296,9 +1695,6 @@
     <div class="home-header-row">
       <h1 class="page-title" id="greeting-title">Home</h1>
       <div class="home-header-actions">
-        <button type="button" class="aoun-reco-header-btn" id="aoun-reco-header-btn" aria-label="Open AI Recommendations">
-          🧠 AI Recommendations <span class="dot" id="aoun-reco-header-dot"></span>
-        </button>
         <div class="notif-wrap">
           <button class="notif-bell" id="notif-bell" aria-haspopup="true" aria-expanded="false" aria-controls="notif-dropdown" aria-label="Open notifications"><i class="ti ti-bell"></i><span class="notif-badge" id="notif-badge">0</span></button>
           <div class="notif-overlay" id="notif-overlay"></div>
@@ -1308,16 +1704,6 @@
     </div>
 
     <div class="aoun-insights-card">
-      <div class="aoun-insights-summary">
-        <div class="ais-icon">🤖</div>
-        <div class="ais-text">
-          <div class="ais-title">Aoun Clinical Brief</div>
-          <div class="ais-headline" id="aoun-brief-greeting">Loading your clinical overview…</div>
-          <ul class="ais-bullets" id="aoun-brief-bullets">
-            <li>Reviewing patients assigned to you…</li>
-          </ul>
-        </div>
-      </div>
       <div class="aoun-insights-kpis">
         <div class="aoun-insight-stat patients"><div class="val" id="insight-patients">—</div><div class="lbl">Patients Under Your Care</div></div>
         <div class="aoun-insight-stat critical"><div class="val" id="insight-critical">—</div><div class="lbl">Critical Patients</div></div>
@@ -1327,20 +1713,16 @@
       </div>
     </div>
 
-    <div class="info-card" id="info-card">
-      <div class="info-photo-wrap" id="info-photo-wrap"></div>
-      <div class="info-details">
-        <h2 id="info-name-h2">—</h2>
-        <div class="info-row"><span class="info-label">Title</span><span id="info-title">—</span></div>
-        <div class="info-row"><span class="info-label">Department</span><span id="info-dept">—</span></div>
-        <div class="info-row"><span class="info-label">Specialty</span><span id="info-specialty">—</span></div>
-        <div class="info-row"><span class="info-label">Doctor ID</span><span id="info-id">—</span></div>
-        <div class="info-row"><span class="info-label">Status</span><span id="info-status">—</span></div>
-      </div>
-    </div>
+    <button type="button" class="aoun-reco-header-btn aoun-reco-below-btn" id="aoun-reco-header-btn" aria-label="Open AI Recommendations">
+      🧠 AI Recommendations <span class="dot" id="aoun-reco-header-dot"></span>
+    </button>
+
 
     <p class="section-label">Weekly duty schedule</p>
-    <div id="schedule-wrap"><div class="empty-note">Loading…</div></div>
+    <div class="schedule-scroll-hint" id="schedule-scroll-hint">
+      <div id="schedule-wrap"><div class="empty-note">Loading…</div></div>
+      <div class="schedule-swipe-cue" id="schedule-swipe-cue" aria-hidden="true"><i class="ti ti-chevron-right"></i></div>
+    </div>
 
     <p class="section-label">Active duty doctors right now</p>
     <div id="active-now-list"><div class="empty-note">Loading…</div></div>
@@ -1393,14 +1775,10 @@
       <button id="add-patient-btn">+ Add patient</button>
     </div>
 
-    <div class="aoun-toolbar">
+    <div class="aoun-toolbar" id="patient-scope-filter">
       <button class="aoun-pill" id="aoun-drug-check-btn"><i class="ti ti-pill"></i> Check Drug Interaction</button>
-    </div>
-
-    <div class="filter-row" id="patient-scope-filter">
-      <button class="scope-btn active" data-scope="hospital">All patients in the hospital</button>
-      <button class="scope-btn" data-scope="department">All patients of department</button>
-      <button class="scope-btn" data-scope="specialty">All patients of my specialty</button>
+      <button class="scope-btn active" data-scope="department">By department</button>
+      <button class="scope-btn" data-scope="specialty">By specialty</button>
     </div>
 
     <div id="patients-list"><div class="empty-note">Loading…</div></div>
@@ -1450,7 +1828,6 @@
       <option value="Active">Active</option>
       <option value="Stable">Stable</option>
       <option value="Critical">Critical</option>
-      <option value="Discharged">Discharged</option>
     </select>
     <label>Blood type</label>
     <select id="np-blood-type">
@@ -1591,16 +1968,20 @@
   </div>
   <div class="aoun-panel-body" id="aoun-panel-body">
     <div class="aoun-proactive-brief" id="aoun-proactive-brief">Aoun is analyzing your assigned patients…</div>
-    <div class="aoun-panel-section-label">Quick actions</div>
-    <div class="aoun-quick-grid">
-      <button class="aoun-quick-btn" data-aoun-action="summarize"><i class="ti ti-file-description"></i><span>Summarize Patient</span></button>
-      <button class="aoun-quick-btn" data-aoun-action="explain-lab"><i class="ti ti-flask"></i><span>Explain Lab</span></button>
-      <button class="aoun-quick-btn" data-aoun-action="drug-check"><i class="ti ti-pill"></i><span>Drug Interaction</span></button>
-      <button class="aoun-quick-btn" data-aoun-action="search"><i class="ti ti-search"></i><span>Search Patient</span></button>
+    <div id="aoun-quick-actions-section">
+      <div class="aoun-panel-section-label">Quick actions</div>
+      <div class="aoun-quick-grid">
+        <button class="aoun-quick-btn" data-aoun-action="summarize"><i class="ti ti-file-description"></i><span>Summarize Patient</span></button>
+        <button class="aoun-quick-btn" data-aoun-action="explain-lab"><i class="ti ti-flask"></i><span>Explain Lab</span></button>
+        <button class="aoun-quick-btn" data-aoun-action="drug-check"><i class="ti ti-pill"></i><span>Drug Interaction</span></button>
+        <button class="aoun-quick-btn" data-aoun-action="search"><i class="ti ti-search"></i><span>Search Patient</span></button>
+      </div>
     </div>
 
-    <div class="aoun-panel-section-label">Proactive alerts</div>
-    <div id="aoun-panel-suggestions"><div class="empty-note" style="padding:6px 0;">No alerts right now.</div></div>
+    <div id="aoun-proactive-alerts-section">
+      <div class="aoun-panel-section-label">Proactive alerts</div>
+      <div id="aoun-panel-suggestions"><div class="empty-note" style="padding:6px 0;">No alerts right now.</div></div>
+    </div>
 
     <div id="aoun-panel-picker" style="display:none; margin-top:10px;">
       <div class="aoun-search-row">
@@ -1628,6 +2009,26 @@
   </div>
 </div>
 
+<!-- ══════════════ SETTINGS ══════════════ -->
+<div class="settings-overlay" id="settings-overlay"></div>
+<div class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-label="Profile and Settings">
+  <div class="settings-header">
+    <div class="settings-header-top">
+      <span class="settings-title"><i class="ti ti-settings"></i> Profile &amp; Settings</span>
+      <button class="settings-close-btn" id="settings-close-btn" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+  </div>
+  <div class="settings-body">
+    <div class="settings-tabs" id="settings-tabs">
+      <button class="settings-tab-btn active" data-settings-tab="profile"><i class="ti ti-user"></i> Profile info</button>
+      <button class="settings-tab-btn" data-settings-tab="security"><i class="ti ti-shield-lock"></i> Account &amp; Security</button>
+    </div>
+    <div class="settings-content" id="settings-content">
+      <div class="empty-note">Loading…</div>
+    </div>
+  </div>
+</div>
+
 <script>
   // ══════════════════════════════════════════════════════════════
   // CONNECTION SETUP
@@ -1635,10 +2036,11 @@
   const SUPABASE_URL = "https://etvrquzjlgzmysbxlrev.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0dnJxdXpqbGd6bXlzYnhscmV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODEyOTgsImV4cCI6MjA5OTI1NzI5OH0.zIgWMsOzp-agiVOe-cnOx4qgA-FUsU-fGbgVCvW_Yjg";
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  IdleLogout.init(supabaseClient); // auto sign-out after inactivity — see assets/idle-logout.js
 
-  if (typeof pdfjsLib !== "undefined") {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  }
+  // pdf.js worker setup happens lazily in aounEnsurePdfWorker() on first
+  // actual use now, since pdf.min.js loads with `defer` (see <head>) and
+  // may not be available yet at this point in the page load.
 
   let aounPdfAnalysisCache = JSON.parse(sessionStorage.getItem("aoun_pdf_analyses") || "{}");
   let aounPdfAutoQueue = new Set();
@@ -1656,6 +2058,8 @@
   const SHIFT_LABELS = { A: "8am–4pm", B: "4pm–12am", C: "12am–8am" };
 
   let me = null;
+  let authUserEmail = "";     // the login email from the auth session (used to re-verify current password)
+  let lastSignInAt = null;    // real value from supabase.auth.getUser(), shown in Settings > Account & Security
   let departments = [];       // [{ id, name, has_specialties }] — DB-driven, used to resolve dept/specialty IDs
   let specialtiesByDept = {}; // { department_id: [{ id, name }] }
   let sectionDoctors = [];   // colleagues in my department (duty doctors), excluding me
@@ -1694,6 +2098,13 @@
     return /\.(png|jpe?g|gif|webp)$/i.test(filename || "");
   }
 
+  // Lab reports can be uploaded as PDF or as a photo/scan saved directly as
+  // an image — both are readable by Aoun (PDFs via text extraction or OCR
+  // fallback, images via OCR directly), so both get an Analyze option.
+  function aounIsAnalyzableFile(filename) {
+    return /\.pdf$/i.test(filename || "") || isImageFilename(filename);
+  }
+
   // Assigns each person a consistent color (pink/purple/teal/amber) based on
   // their id, purely for visual variety in avatar circles — same person
   // always gets the same color, no data behind it.
@@ -1705,12 +2116,25 @@
     return colors[hash % colors.length];
   }
 
+  // Swaps a broken avatar <img> for its initials-circle fallback. Wired via
+  // onerror on every avatar <img> so a failed photo load (deleted file, bad
+  // URL, offline) never shows the browser's broken-image icon — this is
+  // what was showing for every doctor photo before the storage bucket
+  // permissions were fixed, and stays as a safety net for genuine failures.
+  function avatarImgError(imgEl) {
+    const div = document.createElement("div");
+    div.className = imgEl.dataset.fallbackClass || imgEl.className;
+    div.textContent = imgEl.dataset.fallbackText || "";
+    imgEl.replaceWith(div);
+  }
+
   // Shared avatar renderer: shows a real photo if the doctor has one set
   // (admin-managed, via Supabase Storage), otherwise falls back to initials.
   function avatarHtml(person, sizeClass) {
     const cls = sizeClass ? `avatar ${sizeClass}` : "avatar";
     if (person.photo_url) {
-      return `<img class="${cls}" src="${person.photo_url}" alt="${person.full_name}">`;
+      const fallbackClass = `${cls} ${avatarColorClass(person.user_id)}`;
+      return `<img class="${cls}" src="${person.photo_url}" alt="${person.full_name}" onerror="avatarImgError(this)" data-fallback-class="${fallbackClass}" data-fallback-text="${initials(person.full_name)}">`;
     }
     return `<div class="${cls} ${avatarColorClass(person.user_id)}">${initials(person.full_name)}</div>`;
   }
@@ -1760,6 +2184,12 @@
       // Leaving the chat tab (or switching to it fresh) should show the
       // contact list first on mobile, not a stale open conversation.
       if (btn.dataset.tab !== "chat") closeMobileChat();
+      // The Aoun floating launcher sits bottom-right, which overlaps the
+      // chat window's message list and send button — hide it while the
+      // Chat tab is open, restore it everywhere else.
+      const isChatTab = btn.dataset.tab === "chat";
+      document.getElementById("aoun-fab").style.display = isChatTab ? "none" : "";
+      if (isChatTab) Aoun.closePanel();
     });
   });
 
@@ -1806,15 +2236,10 @@
     }, speed);
   }
 
+  // Full doctor info now lives in Settings > Profile info (see
+  // Settings.renderProfileInfoTab) — this just keeps the greeting and the
+  // always-visible sidebar photo/name in sync with `me`.
   function renderInfoCard() {
-    document.getElementById("info-photo-wrap").innerHTML = avatarHtml(me, "lg");
-    document.getElementById("info-name-h2").textContent = me.full_name;
-    document.getElementById("info-title").textContent = me.title || "Duty Doctor";
-    document.getElementById("info-dept").textContent = me.department || "—";
-    document.getElementById("info-specialty").textContent = me.specialty || "—";
-    document.getElementById("info-id").textContent = me.doctor_code || me.user_id.slice(0, 8);
-    document.getElementById("info-status").textContent = me.status === "inactive" ? "Inactive" : "Active";
-
     typeWriter(document.getElementById("greeting-title"), `${getGreeting()}, ${me.full_name}`);
 
     // Persistent sidebar profile — visible under the logo no matter which tab is open
@@ -1862,6 +2287,19 @@
         </table>
       </div>
     `;
+
+    // Swipe hint: only relevant on the narrow/mobile layout where the table
+    // overflows its container. Hides itself the first time the person
+    // actually scrolls, and stays hidden for the rest of the session even
+    // though this function re-renders often (every realtime shift update).
+    const hintEl = document.getElementById("schedule-scroll-hint");
+    if (hintEl) {
+      if (sessionStorage.getItem("schedule_swiped")) hintEl.classList.add("scrolled");
+      wrap.addEventListener("scroll", () => {
+        hintEl.classList.add("scrolled");
+        sessionStorage.setItem("schedule_swiped", "1");
+      }, { once: true, passive: true });
+    }
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -2178,6 +2616,7 @@
     const visible = notifState.data.filter((n) => {
       if (notifState.cleared.has(n.id)) return false;
       const meta = notifTypeMeta(n.type, n.content);
+      if (!notifCategoryEnabled(meta.tab)) return false;
       if (notifState.filter === "unread" && n.is_read) return false;
       if (!["all", "unread"].includes(notifState.filter) && meta.tab !== notifState.filter) return false;
       if (notifState.search && !n.content.toLowerCase().includes(notifState.search)) return false;
@@ -2200,11 +2639,12 @@
       return;
     }
 
-    body.innerHTML = visible.map((n) => {
+    const renderCard = (n) => {
       const meta = notifTypeMeta(n.type, n.content);
+      const prClass = meta.priority === "critical" || meta.priority === "high" ? `pr-${meta.priority}` : "";
       return `
-        <div class="notif-item ${n.is_read ? "" : "unread"}" data-notif-id="${n.id}" tabindex="0" role="button" aria-label="${aounEscape(meta.title)} notification">
-          <span class="notif-icon">${meta.icon}</span>
+        <div class="notif-item ${n.is_read ? "" : "unread"} ${prClass}" data-notif-id="${n.id}" tabindex="0" role="button" aria-label="${aounEscape(meta.title)} notification">
+          <span class="notif-icon type-${meta.tab}">${meta.icon}</span>
           <div class="notif-content">
             <div class="notif-title-row">
               <div class="notif-title-left">
@@ -2221,7 +2661,24 @@
           </div>
         </div>
       `;
-    }).join("");
+    };
+
+    // Group into "New" (unread) and "Earlier" (read) so the list reads as
+    // organized sections instead of one flat, hard-to-scan stack — but only
+    // when the current view actually has a mix of both.
+    const unreadItems = visible.filter((n) => !n.is_read);
+    const readItems = visible.filter((n) => n.is_read);
+
+    if (unreadItems.length > 0 && readItems.length > 0) {
+      body.innerHTML = `
+        <div class="notif-group-label">New</div>
+        ${unreadItems.map(renderCard).join("")}
+        <div class="notif-group-label" style="margin-top:6px;">Earlier</div>
+        ${readItems.map(renderCard).join("")}
+      `;
+    } else {
+      body.innerHTML = visible.map(renderCard).join("");
+    }
 
     // Opening a card (or its quick action) marks it read and routes to
     // wherever that notification's content actually lives in the app.
@@ -2257,57 +2714,14 @@
     supabaseClient.from("notifications").update({ is_read: true }).eq("id", id).then(() => refreshNotifBadge());
   }
 
-  // ── AI Daily Summary — built from real, already-loaded app state, not
-  // hardcoded numbers: critical/AI counts from Aoun's live recommendations,
-  // pending labs from the same lab_requests Aoun already tracks, messages
-  // from the chat tab's unread tally, shift requests via one light query. ──
-  async function computeNotifSummary() {
-    const critical = aounAlertsLoaded ? aounCdsActiveRecs().filter((r) => r.priority === "critical").length : 0;
-    const pendingLabs = aounAlertsLoaded ? (aounCdsLabReqs || []).filter((l) => l.status !== "Finished (Result Collected)").length : 0;
-    const aiRecs = aounAlertsLoaded ? aounCdsActiveRecs().length : 0;
-    const messages = Object.values(unreadCounts || {}).reduce((s, n) => s + n, 0);
-
-    let shiftRequests = 0;
-    try {
-      const { count } = await supabaseClient
-        .from("shift_swaps")
-        .select("id", { count: "exact", head: true })
-        .eq("target_id", me.user_id)
-        .eq("status", "pending");
-      shiftRequests = count || 0;
-    } catch (e) { /* best-effort — panel still works without this number */ }
-
-    return { critical, pendingLabs, aiRecs, messages, shiftRequests };
-  }
-
-  async function renderNotifSummary() {
-    const el = document.getElementById("notif-ai-summary-chips");
-    if (!el) return;
-    const s = await computeNotifSummary();
-    el.innerHTML = `
-      <button type="button" class="notif-ai-chip crit" data-summary-filter="ai">🚨 Critical Patients: <span class="num">${s.critical}</span></button>
-      <button type="button" class="notif-ai-chip lab" data-summary-filter="lab">🧪 Pending Labs: <span class="num">${s.pendingLabs}</span></button>
-      <button type="button" class="notif-ai-chip shift" data-summary-filter="shift">🔄 Shift Requests: <span class="num">${s.shiftRequests}</span></button>
-      <button type="button" class="notif-ai-chip msg" data-summary-filter="message">💬 Messages: <span class="num">${s.messages}</span></button>
-      <button type="button" class="notif-ai-chip ai" data-summary-filter="ai">🤖 AI Recommendations: <span class="num">${s.aiRecs}</span></button>
-    `;
-    el.querySelectorAll("[data-summary-filter]").forEach((chip) => {
-      chip.addEventListener("click", () => setNotifFilter(chip.dataset.summaryFilter));
-    });
-  }
-
-  function setNotifFilter(key) {
-    notifState.filter = key;
-    document.querySelectorAll(".notif-tab").forEach((b) => b.classList.toggle("active", b.dataset.filter === key));
-    renderNotifBody();
-  }
-
   async function refreshNotifBadge() {
-    const { count } = await supabaseClient
+    const { data } = await supabaseClient
       .from("notifications")
-      .select("id", { count: "exact", head: true })
+      .select("type, content")
       .eq("user_id", me.user_id)
       .eq("is_read", false);
+
+    const count = (data || []).filter((n) => notifCategoryEnabled(notifTypeMeta(n.type, n.content).tab)).length;
 
     const badge = document.getElementById("notif-badge");
     if (count && count > 0) {
@@ -2345,12 +2759,6 @@
             <button type="button" class="notif-icon-btn close-btn" id="notif-close-btn" title="Close" aria-label="Close notification center"><i class="ti ti-x"></i></button>
           </div>
         </div>
-        <div class="notif-ai-summary">
-          <div class="nas-head">🤖 Today's Summary</div>
-          <div class="nas-chips" id="notif-ai-summary-chips">
-            <span class="empty-note" style="padding:2px 0;">Analyzing…</span>
-          </div>
-        </div>
         <div class="notif-search-wrap">
           <i class="ti ti-search"></i>
           <input type="text" id="notif-search-input" placeholder="Search notifications..." autocomplete="off" aria-label="Search notifications" />
@@ -2385,7 +2793,6 @@
     dropdown.querySelector("#notif-close-btn").addEventListener("click", closeNotifPanel);
 
     renderNotifBody();
-    renderNotifSummary();
   }
 
   // ── Open/close the slide-over with the overlay, matching animation
@@ -2395,6 +2802,7 @@
     const overlay = document.getElementById("notif-overlay");
     dropdown.classList.add("show");
     overlay.classList.add("show");
+    document.body.classList.add("overlay-open");
     document.getElementById("notif-bell").setAttribute("aria-expanded", "true");
     requestAnimationFrame(() => { dropdown.classList.add("in"); overlay.classList.add("in"); });
   }
@@ -2403,8 +2811,9 @@
     const overlay = document.getElementById("notif-overlay");
     dropdown.classList.remove("in");
     overlay.classList.remove("in");
+    document.body.classList.remove("overlay-open");
     document.getElementById("notif-bell").setAttribute("aria-expanded", "false");
-    setTimeout(() => { dropdown.classList.remove("show"); overlay.classList.remove("show"); }, 300);
+    setTimeout(() => { dropdown.classList.remove("show"); overlay.classList.remove("show"); }, 180);
   }
 
   document.getElementById("notif-bell").addEventListener("click", async () => {
@@ -2428,48 +2837,20 @@
     if (e.key === "Escape" && document.getElementById("notif-dropdown").classList.contains("show")) closeNotifPanel();
   });
 
-  // ── Notification Settings modal — client-side preferences only,
-  // stored per-device; no backend/database change. ──
-  const NOTIF_SETTINGS_KEY = "riaya_notif_settings_v1";
-  function loadNotifSettings() {
-    try { return JSON.parse(localStorage.getItem(NOTIF_SETTINGS_KEY)) || {}; } catch (e) { return {}; }
-  }
-  function openNotifSettings() {
-    const s = loadNotifSettings();
-    document.getElementById("ns-desktop").checked = !!s.desktop;
-    document.getElementById("ns-email").checked = !!s.email;
-    document.getElementById("ns-lab").checked = s.lab !== false;
-    document.getElementById("ns-ai").checked = s.ai !== false;
-    document.getElementById("ns-shift").checked = s.shift !== false;
-    document.getElementById("ns-messages").checked = s.messages !== false;
-    document.getElementById("ns-sound").checked = !!s.sound;
-    document.querySelectorAll('input[name="ns-freq"]').forEach((r) => { r.checked = r.value === (s.frequency || "immediate"); });
-    document.getElementById("notif-settings-backdrop").classList.add("show");
-  }
-  function closeNotifSettings() {
-    document.getElementById("notif-settings-backdrop").classList.remove("show");
-  }
-  document.getElementById("notif-settings-cancel").addEventListener("click", closeNotifSettings);
-  document.getElementById("notif-settings-backdrop").addEventListener("click", (e) => {
-    if (e.target.id === "notif-settings-backdrop") closeNotifSettings();
-  });
-  document.getElementById("notif-settings-save").addEventListener("click", () => {
-    const settings = {
-      desktop: document.getElementById("ns-desktop").checked,
-      email: document.getElementById("ns-email").checked,
-      lab: document.getElementById("ns-lab").checked,
-      ai: document.getElementById("ns-ai").checked,
-      shift: document.getElementById("ns-shift").checked,
-      messages: document.getElementById("ns-messages").checked,
-      sound: document.getElementById("ns-sound").checked,
-      frequency: document.querySelector('input[name="ns-freq"]:checked')?.value || "immediate",
-    };
-    localStorage.setItem(NOTIF_SETTINGS_KEY, JSON.stringify(settings));
-    if (settings.desktop && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-    closeNotifSettings();
-  });
+  // ── Notification Settings — the dedicated Notifications tab was removed;
+  // this now just opens Settings on the Account & Security tab.
+  // openNotifSettings/closeNotifSettings are kept as thin aliases so
+  // nothing that still calls them by name breaks.
+  //
+  // NOTE: this replaces a bug that used to live here — a top-level
+  // `document.getElementById("notif-settings-btn")` was being bound
+  // before that button existed in the DOM (it's only rendered later,
+  // inside loadNotifDropdown's template), which threw on every page
+  // load and silently stopped the rest of this script — including the
+  // init() call at the very bottom — from ever running.
+  function openNotifSettings() { closeNotifPanel(); Settings.open("security"); }
+  function closeNotifSettings() { Settings.close(); }
+  document.getElementById("sidebar-profile-btn")?.addEventListener("click", () => Settings.open("profile"));
 
   // ── Real-time: notifications + shift swap requests ──
   // Replaces the old 6-second polling — updates now arrive the instant
@@ -2577,7 +2958,7 @@
       html += `<div class="chat-list-group-label">Head doctor</div>`;
       html += `
         <div class="chat-list-item" data-id="${headDoctor.user_id}" data-name="${headDoctor.full_name}" data-photo="${headDoctor.photo_url || ""}">
-          ${headDoctor.photo_url ? `<img class="mini-avatar head" src="${headDoctor.photo_url}" alt="${headDoctor.full_name}">` : `<div class="mini-avatar head">${initials(headDoctor.full_name)}</div>`}
+          ${headDoctor.photo_url ? `<img class="mini-avatar head" src="${headDoctor.photo_url}" alt="${headDoctor.full_name}" onerror="avatarImgError(this)" data-fallback-class="mini-avatar head" data-fallback-text="${initials(headDoctor.full_name)}">` : `<div class="mini-avatar head">${initials(headDoctor.full_name)}</div>`}
           <div>${headDoctor.full_name}<div class="item-sub">Head Doctor</div></div>
           ${unreadBadgeHtml(headDoctor.user_id)}
         </div>
@@ -2590,7 +2971,7 @@
     } else {
       html += sectionDoctors.map((d) => `
         <div class="chat-list-item" data-id="${d.user_id}" data-name="${d.full_name}" data-photo="${d.photo_url || ""}">
-          ${d.photo_url ? `<img class="mini-avatar" src="${d.photo_url}" alt="${d.full_name}">` : `<div class="mini-avatar ${avatarColorClass(d.user_id)}">${initials(d.full_name)}</div>`}
+          ${d.photo_url ? `<img class="mini-avatar" src="${d.photo_url}" alt="${d.full_name}" onerror="avatarImgError(this)" data-fallback-class="mini-avatar ${avatarColorClass(d.user_id)}" data-fallback-text="${initials(d.full_name)}">` : `<div class="mini-avatar ${avatarColorClass(d.user_id)}">${initials(d.full_name)}</div>`}
           <div>${d.full_name}<div class="item-sub">${d.title || "Duty Doctor"}</div></div>
           ${unreadBadgeHtml(d.user_id)}
         </div>
@@ -2614,7 +2995,7 @@
     const headerAvatar = document.getElementById("chat-header-avatar");
     headerAvatar.className = `mini-avatar ${avatarColorClass(id)}`;
     if (photoUrl) {
-      headerAvatar.innerHTML = `<img src="${photoUrl}" alt="${name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+      headerAvatar.innerHTML = `<img src="${photoUrl}" alt="${name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.remove(); document.getElementById('chat-header-avatar').textContent='${initials(name)}';">`;
     } else {
       headerAvatar.innerHTML = "";
       headerAvatar.textContent = initials(name);
@@ -2648,8 +3029,14 @@
   }
   document.getElementById("chat-back-btn").addEventListener("click", closeMobileChat);
 
-  function scrollChatToBottom() {
+  function isChatScrolledNearBottom() {
     const msgEl = document.getElementById("chat-messages");
+    return msgEl.scrollHeight - msgEl.scrollTop - msgEl.clientHeight < 150;
+  }
+
+  function scrollChatToBottom(force) {
+    const msgEl = document.getElementById("chat-messages");
+    if (!force && !isChatScrolledNearBottom()) return;
     msgEl.scrollTop = msgEl.scrollHeight;
   }
 
@@ -2680,16 +3067,18 @@
     `;
   }
 
-  function renderMessageList() {
-    const msgEl = document.getElementById("chat-messages");
+  // A stable key for a message row: while it's only known to us it's keyed
+  // by client_id (before the server round-trip completes); once the server
+  // row lands, m.id is the same for everyone. Using client_id first means an
+  // optimistic bubble and its later server confirmation resolve to the same
+  // DOM node instead of becoming two.
+  function bubbleKey(m) {
+    return m.client_id || m.id;
+  }
 
-    if (renderedMessages.length === 0) {
-      msgEl.innerHTML = `<div class="empty-note">No messages yet — say hello.</div>`;
-      return;
-    }
-
-    msgEl.innerHTML = renderedMessages.map((m) => `
-      <div class="bubble ${m.sender_id === me.user_id ? "me" : "them"} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""} ${m.attachment_url ? "has-attachment" : ""}">
+  function bubbleHtml(m) {
+    return `
+      <div class="bubble ${m.sender_id === me.user_id ? "me" : "them"} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""} ${m.attachment_url ? "has-attachment" : ""}" data-key="${bubbleKey(m)}">
         ${attachmentHtml(m)}
         ${m.content ? `<div class="bubble-text">${m.content}</div>` : ""}
         <div class="bubble-footer">
@@ -2698,7 +3087,40 @@
           ${!m.pending && !m.failed ? receiptTicksHtml(m) : ""}
         </div>
       </div>
-    `).join("");
+    `;
+  }
+
+  // Full rebuild — only used when a conversation is (re)loaded from scratch.
+  function renderMessageList() {
+    const msgEl = document.getElementById("chat-messages");
+
+    if (renderedMessages.length === 0) {
+      msgEl.innerHTML = `<div class="empty-note">No messages yet — say hello.</div>`;
+      return;
+    }
+
+    msgEl.innerHTML = renderedMessages.map(bubbleHtml).join("");
+  }
+
+  // Adds exactly one new bubble to the DOM without touching (or re-fetching
+  // the images of) any bubble already on screen. This is what keeps a long,
+  // image-heavy conversation from lagging every time a message comes in —
+  // previously every new message re-rendered and re-decoded the entire
+  // conversation's HTML, including every attachment thumbnail.
+  function appendMessageDom(m) {
+    const msgEl = document.getElementById("chat-messages");
+    if (msgEl.querySelector(".empty-note")) msgEl.innerHTML = "";
+    msgEl.insertAdjacentHTML("beforeend", bubbleHtml(m));
+  }
+
+  // Patches an existing bubble in place (e.g. an optimistic "sending…"
+  // bubble being confirmed by the server, a send failing, or read/delivered
+  // ticks updating) without re-rendering anything else on screen.
+  function patchMessageDom(m) {
+    const msgEl = document.getElementById("chat-messages");
+    const existing = msgEl.querySelector(`.bubble[data-key="${CSS.escape(String(bubbleKey(m)))}"]`);
+    if (existing) existing.outerHTML = bubbleHtml(m);
+    else appendMessageDom(m);
   }
 
   // Initial load: fetch full history for the selected conversation once.
@@ -2722,7 +3144,7 @@
 
     renderedMessages = messages || [];
     renderMessageList();
-    scrollChatToBottom();
+    scrollChatToBottom(true);
 
     // Anything from them that never got marked delivered (e.g. arrived while
     // we were offline) is delivered now that we've actually fetched it.
@@ -2757,16 +3179,30 @@
     const statusEl = document.getElementById("chat-upload-status");
     const attachBtn = document.getElementById("chat-attach-btn");
 
+    // Captured now, before the (often slow, on hospital wifi) upload —
+    // otherwise a doctor who opens a different conversation while a large
+    // photo/PDF is still uploading would have it silently sent to whoever
+    // is selected *after* the upload finishes, which looked from the
+    // original recipient's side like the attachment "never sent".
+    const targetContact = selectedContact;
+
     statusEl.textContent = `Uploading ${file.name}…`;
     attachBtn.disabled = true;
 
     const filePath = `${me.user_id}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabaseClient.storage.from("chat-attachments").upload(filePath, file);
+    let uploadError = (await supabaseClient.storage.from("chat-attachments").upload(filePath, file)).error;
+
+    // One automatic retry — on a flaky hospital connection a single dropped
+    // request was enough to make this look like it silently failed.
+    if (uploadError) {
+      await new Promise((r) => setTimeout(r, 1200));
+      uploadError = (await supabaseClient.storage.from("chat-attachments").upload(filePath, file)).error;
+    }
 
     if (uploadError) {
       statusEl.textContent = "";
       attachBtn.disabled = false;
-      alert("Couldn't upload file: " + uploadError.message);
+      alert(`Couldn't send "${file.name}" — ${uploadError.message}. Please try attaching it again.`);
       return;
     }
 
@@ -2774,7 +3210,7 @@
 
     const { error: insertError } = await supabaseClient.from("messages").insert({
       sender_id: me.user_id,
-      receiver_id: selectedContact.id,
+      receiver_id: targetContact.id,
       content: "",
       attachment_url: publicUrlData.publicUrl,
       attachment_name: file.name,
@@ -2786,7 +3222,7 @@
     attachBtn.disabled = false;
 
     if (insertError) {
-      alert("Couldn't send attachment: " + insertError.message);
+      alert(`Couldn't send "${file.name}" — ${insertError.message}. Please try attaching it again.`);
     } else if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
       statusEl.textContent = "Aoun is analyzing the uploaded PDF…";
       const patientMatch = openPatientId ? patients.find((p) => p.id === openPatientId) : null;
@@ -2820,12 +3256,17 @@
       pending: true,
     };
     renderedMessages.push(optimisticMessage);
-    renderMessageList();
-    scrollChatToBottom();
+    appendMessageDom(optimisticMessage);
+    scrollChatToBottom(true);
+
+    // Captured up front so that switching to a different conversation while
+    // this send is still in flight can't silently redirect it to whoever
+    // happens to be selected by the time the request resolves.
+    const targetReceiverId = selectedContact.id;
 
     const { error } = await supabaseClient.from("messages").insert({
       sender_id: me.user_id,
-      receiver_id: selectedContact.id,
+      receiver_id: targetReceiverId,
       content,
       client_id: clientId,
     });
@@ -2836,7 +3277,7 @@
       pendingClientIds.delete(clientId);
       const target = renderedMessages.find((m) => m.client_id === clientId);
       if (target) { target.pending = false; target.failed = true; }
-      renderMessageList();
+      if (target) patchMessageDom(target);
     }
     // On success we don't manually append anything further — the realtime
     // subscription below will deliver the confirmed row and reconcile it.
@@ -2879,14 +3320,14 @@
           // rendered optimistically — replace the pending bubble, don't duplicate it.
           pendingClientIds.delete(m.client_id);
           const idx = renderedMessages.findIndex((existing) => existing.client_id === m.client_id);
-          if (idx !== -1) renderedMessages[idx] = m;
-          else renderedMessages.push(m);
+          if (idx !== -1) renderedMessages[idx] = m; else renderedMessages.push(m);
+          patchMessageDom(m);
         } else {
           // A genuinely new incoming message from the other person
           renderedMessages.push(m);
+          appendMessageDom(m);
         }
 
-        renderMessageList();
         scrollChatToBottom();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
@@ -2896,7 +3337,7 @@
         const idx = renderedMessages.findIndex((existing) => existing.id === m.id);
         if (idx !== -1) {
           renderedMessages[idx] = { ...renderedMessages[idx], ...m };
-          renderMessageList();
+          patchMessageDom(renderedMessages[idx]);
         }
       })
       .subscribe();
@@ -2950,16 +3391,20 @@
   let openPatientId = null; // tracks which card is expanded, so re-renders don't collapse it
   let patientActiveTab = {}; // patientId -> "overview" | "labs" | "notes" | "history"
 
-  // Every patient is visible to every department (see loadPatients — no
-  // department filter on the query), but only a doctor whose department AND
-  // specialty both match the patient's can change anything about them. This
-  // mirrors the database RLS policies exactly (patients UPDATE/DELETE and
-  // medical_history INSERT all check section = get_my_department() AND
-  // specialty = get_my_specialty()) — this is just the UI-side reflection of
-  // that same rule, so buttons a doctor can't actually use don't show up.
+  // Visible patients are those in the doctor's own department OR own
+  // specialty (see loadPatients), but only patients matching the doctor's
+  // own specialty can be edited or deleted.
+  //
+  // IMPORTANT: this used to also require patient.section === me.department,
+  // matching a database RLS policy that checked section AND specialty
+  // together. That backend policy (patients UPDATE/DELETE, and the
+  // medical_history INSERT policy) needs to be updated to check specialty
+  // alone as well, or a specialty-matching-but-different-department patient
+  // will show an edit/delete button here that then fails against the
+  // database.
   function canModify(patient) {
     if (!patient || !me) return false;
-    return patient.section === me.department && patient.specialty === me.specialty;
+    return patient.specialty === me.specialty;
   }
 
   // Patients assigned to the authenticated doctor — same department + specialty
@@ -3195,6 +3640,114 @@
     if (openPatientId) await loadPatientDetail(openPatientId);
   }
 
+  async function deleteLabFile(fileId) {
+    const confirmed = confirm("Delete this file? This cannot be undone.");
+    if (!confirmed) return;
+
+    const { data, error } = await supabaseClient.from("lab_files").delete().eq("id", fileId).select();
+    if (error) { alert("Couldn't delete this file: " + error.message); return; }
+    if (!data || data.length === 0) {
+      alert("The file wasn't deleted — you may not have permission, or it was already removed.");
+    }
+
+    if (openPatientId) await loadPatientDetail(openPatientId);
+  }
+
+  // Builds a clean, doctor-facing printable page for one lab order —
+  // patient/order header plus each test's status, lab note, case report,
+  // and the actual attached images/PDFs embedded inline — then opens the
+  // browser print dialog. Only the #labs-print-area is visible while
+  // @media print is active (see CSS), so nothing else from the dashboard
+  // bleeds onto the page.
+  async function printLabOrder(orderId, triggerBtn) {
+    const o = labHistory.find((x) => x.id === orderId);
+    if (!o) return;
+    const tests = labHistoryTests[orderId] || [];
+    const patient = openPatientId ? patients.find((p) => p.id === openPatientId) : null;
+
+    // Rasterizing PDF pages takes a moment — show that on the button that
+    // was clicked instead of leaving it looking like nothing happened.
+    const originalBtnHtml = triggerBtn ? triggerBtn.innerHTML : null;
+    if (triggerBtn) { triggerBtn.disabled = true; triggerBtn.innerHTML = `<i class="ti ti-loader-2" aria-hidden="true"></i>`; }
+
+    // <embed type="application/pdf"> depends on the browser's native PDF
+    // viewer plugin, which most mobile browsers (and some desktop ones)
+    // either don't have or don't include in window.print() output — that's
+    // exactly why PDFs weren't printing. Rendering each page to a real
+    // <img> instead guarantees actual pixels end up on the printed page,
+    // the same way the pdf.js renderer already works elsewhere in the app.
+    const pdfPageImages = {}; // file_url -> [dataURL, ...]
+    for (const t of tests) {
+      for (const f of (t.files || [])) {
+        if (/\.pdf$/i.test(f.file_name) && !pdfPageImages[f.file_url]) {
+          try {
+            const canvases = await aounRenderPdfPagesToCanvases(f.file_url, 2);
+            pdfPageImages[f.file_url] = canvases.map((c) => c.toDataURL("image/png"));
+          } catch (err) {
+            console.error("Could not render PDF for printing:", f.file_name, err);
+            pdfPageImages[f.file_url] = null; // fall through to the "open separately" link below
+          }
+        }
+      }
+    }
+
+    const fileHtml = (f) => {
+      if (isImageFilename(f.file_name)) {
+        return `<div class="print-file"><img src="${f.file_url}" alt="${aounEscape(f.file_name)}"></div>`;
+      }
+      if (/\.pdf$/i.test(f.file_name)) {
+        const pages = pdfPageImages[f.file_url];
+        if (pages && pages.length) {
+          return pages.map((dataUrl) => `<div class="print-file"><img src="${dataUrl}" alt="${aounEscape(f.file_name)}"></div>`).join("");
+        }
+        return `<div class="print-file-fallback">Couldn't render ${aounEscape(f.file_name)} for printing — <a href="${f.file_url}" target="_blank">open it</a> and print separately.</div>`;
+      }
+      return `<div class="print-file-name">📎 ${aounEscape(f.file_name)}</div>`;
+    };
+
+    const testsHtml = tests.map((t) => `
+      <div style="padding:10px 0; border-bottom:1px solid #ddd;">
+        <div style="display:flex; justify-content:space-between; gap:10px; font-weight:700; font-size:13px;">
+          <span>${aounEscape(t.test_name)} <span style="font-weight:400; color:#555;">(${aounEscape(t.category || "")})</span></span>
+          <span>${aounEscape(friendlyStatusLabel(t.status))}</span>
+        </div>
+        ${t.labNote ? `<div style="margin-top:4px; font-size:12.5px;"><strong>Lab note:</strong> ${aounEscape(t.labNote)}</div>` : ""}
+        ${t.caseReport ? `<div style="margin-top:4px; font-size:12.5px;"><strong>Case report:</strong> ${t.caseReport}</div>` : ""}
+        ${(t.files || []).map(fileHtml).join("")}
+      </div>
+    `).join("") || "<p>No tests on this order.</p>";
+
+    const area = document.getElementById("labs-print-area");
+    area.innerHTML = `
+      <div class="print-header">
+        <h1>Lab Results — ${o.order_id}</h1>
+        <div class="meta">
+          Patient: ${aounEscape(patient ? patient.full_name : "—")} (${aounEscape(patient ? (patient.patient_number || "—") : "—")})<br>
+          Requesting doctor: ${aounEscape(o.requesting_doctor_name || "—")} · Date: ${formatDate(o.created_at)}<br>
+          Reason: ${aounEscape(o.reason || "—")}
+        </div>
+      </div>
+      <div class="print-section">
+        <h2>Tests</h2>
+        ${testsHtml}
+      </div>
+    `;
+
+    if (triggerBtn) { triggerBtn.disabled = false; triggerBtn.innerHTML = originalBtnHtml; }
+
+    // Give every image (uploaded photos + freshly rendered PDF pages) a
+    // moment to actually decode before opening the print dialog —
+    // otherwise the browser can print the page while one is still blank.
+    const images = Array.from(area.querySelectorAll("img"));
+    if (images.length === 0) { window.print(); return; }
+    let remaining = images.length;
+    const done = () => { remaining--; if (remaining <= 0) window.print(); };
+    images.forEach((img) => {
+      if (img.complete) done();
+      else { img.addEventListener("load", done, { once: true }); img.addEventListener("error", done, { once: true }); }
+    });
+  }
+
   async function openLabModal(patientId) {
     labModalPatientId = patientId;
     labModalScreen = "type";
@@ -3240,6 +3793,7 @@
           <div style="display:flex; gap:8px; align-items:center;">
             <span class="priority-chip ${o.priority}">${o.priority}</span>
             <span class="lab-status ${statusClass(o.rollupStatus)}">${o.rollupStatus}</span>
+            ${o.rollupStatus === "Completed" ? `<button class="delete-patient-btn print-order-btn" data-print-order="${o.id}" title="Print results"><i class="ti ti-printer" aria-hidden="true"></i></button>` : ""}
             ${deletable ? `<button class="delete-patient-btn" data-delete-order="${o.id}" title="Delete request"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ""}
           </div>
         </div>
@@ -3277,7 +3831,6 @@
         ${appointmentLineHtml}
         ${t.labNote ? `
           <div class="lab-note-red">⚠ ${t.labNote}</div>
-          <button class="aoun-pill sm" style="margin-top:6px;" data-aoun-explain-test="${encodeURIComponent(t.test_name)}" data-aoun-explain-note="${encodeURIComponent(t.labNote)}">🤖 Explain with Aoun</button>
         ` : ""}
         ${t.caseReport ? `<div class="lh-case-report"><div class="cr-label">Case report</div>${t.caseReport}</div>` : ""}
         ${files.length > 0 ? `
@@ -3292,7 +3845,8 @@
                 <div class="fname">${f.file_name}</div>
                 <div class="flinks">
                   <a href="${f.file_url}" download="${f.file_name}">Download</a>
-                  ${/\.pdf$/i.test(f.file_name) ? `<button type="button" class="aoun-pill sm" style="margin-top:4px;" data-aoun-analyze-pdf="${encodeURIComponent(f.file_url)}" data-aoun-pdf-name="${encodeURIComponent(f.file_name)}" data-aoun-pdf-patient="${openPatientId || ""}" data-aoun-pdf-test="${encodeURIComponent(t.test_name)}">🤖 Aoun Analyze</button>` : ""}
+                  <button type="button" class="file-delete-link" data-delete-file="${f.id}" title="Delete file">✕</button>
+                  ${aounIsAnalyzableFile(f.file_name) ? `<button type="button" class="aoun-pill sm" style="margin-top:4px;" data-aoun-analyze-pdf="${encodeURIComponent(f.file_url)}" data-aoun-pdf-name="${encodeURIComponent(f.file_name)}" data-aoun-pdf-patient="${openPatientId || ""}" data-aoun-pdf-test="${encodeURIComponent(t.test_name)}">🤖 Aoun Analyze</button>` : ""}
                 </div>
               </div>
             `).join("")}
@@ -3306,6 +3860,8 @@
     container.querySelectorAll("[data-history-id]").forEach((el) => {
       el.addEventListener("click", (e) => {
         if (e.target.closest("[data-delete-order]")) return;
+        if (e.target.closest("[data-delete-file]")) return;
+        if (e.target.closest("[data-print-order]")) return;
         if (e.target.closest("a")) return; // let file View/Download links behave normally, don't also toggle the card
         const id = Number(el.dataset.historyId);
         const willOpen = labHistoryOpenId !== id;
@@ -3327,6 +3883,20 @@
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteLabOrder(Number(el.dataset.deleteOrder));
+      });
+    });
+
+    container.querySelectorAll("[data-delete-file]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteLabFile(Number(el.dataset.deleteFile));
+      });
+    });
+
+    container.querySelectorAll("[data-print-order]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        printLabOrder(Number(el.dataset.printOrder), el);
       });
     });
 
@@ -3666,10 +4236,26 @@
   }
 
   async function loadPatients() {
-    const { data, error } = await supabaseClient
+    // A duty doctor may only ever see patients in their own department or
+    // their own specialty — never the full hospital roster. This filter is
+    // applied at the query itself (not just hidden client-side afterwards)
+    // so hospital-wide patient data is never downloaded to this doctor's
+    // browser in the first place. NOTE: this still relies on the "patients"
+    // table's SELECT RLS policy allowing rows matching section OR specialty
+    // — if the current RLS policy grants broader read access than that,
+    // this .or() filter narrows what's requested but the policy itself
+    // should also be tightened server-side to match.
+    const scopeClauses = [];
+    if (me.department) scopeClauses.push(`section.eq.${me.department}`);
+    if (me.specialty) scopeClauses.push(`specialty.eq.${me.specialty}`);
+
+    let patientsQuery = supabaseClient
       .from("patients")
-      .select("id, full_name, patient_number, age, gender, room, danger_score, status, admitted_at, section, specialty, department_id, specialty_id, blood_type, allergies, emergency_creator_id")
+      .select("id, full_name, patient_number, age, gender, room, danger_score, status, admitted_at, section, specialty, department_id, specialty_id, blood_type, allergies, emergency_creator_id, diagnosis")
       .order("danger_score", { ascending: false });
+    if (scopeClauses.length) patientsQuery = patientsQuery.or(scopeClauses.join(","));
+
+    const { data, error } = await patientsQuery;
 
     if (error) {
       document.getElementById("patients-list").innerHTML = `<div class="empty-note">Couldn't load patients: ${error.message}</div>`;
@@ -3694,16 +4280,16 @@
     return "status-active";
   }
 
-  // Patients tab scope filter: "hospital" (everyone, everywhere — the
-  // default), "department" (only my department, any specialty), or
-  // "specialty" (only patients that share my own specialty). This actually
-  // filters the list now, rather than just jumping to a patient.
-  let patientScope = "hospital";
+  // Patients tab scope filter: "department" (only my department, any
+  // specialty — the default) or "specialty" (only patients that share my
+  // own specialty, regardless of department). Hospital-wide visibility has
+  // been removed — a duty doctor should never see patients outside their
+  // own department or specialty.
+  let patientScope = "department";
 
   function updateScopeButtonCounts() {
     const deptCount = patients.filter((p) => p.section === me.department).length;
     const specCount = patients.filter((p) => p.specialty === me.specialty).length;
-    document.querySelector('[data-scope="hospital"]').textContent = `All patients in the hospital (${patients.length})`;
     document.querySelector('[data-scope="department"]').textContent = `All patients of department (${deptCount})`;
     document.querySelector('[data-scope="specialty"]').textContent = `All patients of my specialty (${specCount})`;
   }
@@ -3723,9 +4309,8 @@
     const query = document.getElementById("patient-search").value.trim().toLowerCase();
 
     const scoped = patients.filter((p) => {
-      if (patientScope === "department") return p.section === me.department;
       if (patientScope === "specialty") return p.specialty === me.specialty;
-      return true; // "hospital" — everyone
+      return p.section === me.department; // "department" — the default
     });
 
     const filtered = scoped.filter((p) =>
@@ -3744,9 +4329,12 @@
         <div class="patient-summary" data-toggle="${p.id}">
           <div class="avatar ${avatarColorClass(p.id)}">${initials(p.full_name)}</div>
           <div class="info">
-            <div class="name-row">
-              <span class="name">${p.full_name}</span>
+            <div class="name-row"><span class="name">${p.full_name}</span></div>
+            <div class="badge-row">
               <span class="patient-id-chip">${p.patient_number || "generating…"}</span>
+              <span class="status-pill ${statusPillClass(p.status)}">${p.status || "—"}</span>
+              ${dangerBadge(p.danger_score)}
+              ${aounShowPriorityBadges ? Aoun.priorityBadgeHtml(p) : ""}
             </div>
             <div class="meta">
               <div class="meta-line">Admitted ${formatDate(p.admitted_at)}</div>
@@ -3754,12 +4342,10 @@
               ${p.room ? `<div class="meta-line">Room ${p.room}</div>` : ""}
             </div>
           </div>
-          <span class="status-pill ${statusPillClass(p.status)}">${p.status || "—"}</span>
-          ${dangerBadge(p.danger_score)}
-          ${aounShowPriorityBadges ? Aoun.priorityBadgeHtml(p) : ""}
-          <button class="aoun-pill sm" data-aoun-summary="${p.id}" title="Ask Aoun for a patient summary">✨ Ask Aoun</button>
-          ${canModify(p) ? `<button class="delete-patient-btn" data-delete="${p.id}" title="Remove patient"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ""}
-          <span class="chevron"><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+          <div class="summary-controls">
+            ${canModify(p) ? `<button class="delete-patient-btn" data-delete="${p.id}" title="Remove patient"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ""}
+            <span class="chevron"><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+          </div>
         </div>
         <div class="patient-detail" id="detail-${p.id}">
           <div class="empty-note">Loading details…</div>
@@ -3769,13 +4355,6 @@
 
     listEl.querySelectorAll("[data-toggle]").forEach((el) => {
       el.addEventListener("click", () => togglePatient(Number(el.dataset.toggle)));
-    });
-
-    listEl.querySelectorAll("[data-aoun-summary]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        Aoun.openPatientSummary(Number(btn.dataset.aounSummary));
-      });
     });
 
     listEl.querySelectorAll("[data-delete]").forEach((btn) => {
@@ -3835,7 +4414,7 @@
 
     const [labRes, notesRes, historyRes] = await Promise.all([
       supabaseClient.from("lab_requests").select("id, test_name, priority, status, requested_at, completed_at, result_collected_at, requested_by_name, notes").eq("patient_id", patientId).order("requested_at", { ascending: false }),
-      supabaseClient.from("patient_notes").select("note, created_at, doctor_id").eq("patient_id", patientId).order("created_at", { ascending: false }),
+      supabaseClient.from("patient_notes").select("id, note, created_at, doctor_id").eq("patient_id", patientId).order("created_at", { ascending: false }),
       supabaseClient.from("medical_history").select("id, had_surgery, surgery_details, recorded_by, recorded_by_name, recorded_at").eq("patient_id", patientId).order("recorded_at", { ascending: false }),
       loadLabHistory(patientId),
     ]);
@@ -3864,12 +4443,66 @@
       ? `<div class="empty-note" style="padding:8px 0;">No open lab requests.</div>`
       : openOrders.map((o) => renderLabOrderCard(o, { deletable: true })).join("");
 
+    // "Latest Result" spotlights the single most recent completed order.
+    // "Previous Results" is everything else already finished — so nothing
+    // is shown twice, it's just split into "the newest one" vs "the rest".
+    const latestOrder = finishedOrders[0] || null;
+    const latestResultHtml = latestOrder
+      ? renderLabOrderCard(latestOrder, { deletable: false })
+      : `<div class="empty-note" style="padding:8px 0;">No completed results yet.</div>`;
+
+    const earlierFinished = finishedOrders.slice(1);
+    const previousResultsHtml = earlierFinished.length === 0
+      ? `<div class="empty-note" style="padding:8px 0;">No earlier results yet.</div>`
+      : earlierFinished.map((o) => renderLabOrderCard(o, { deletable: false })).join("");
+
+    // "Lab Summary Card" — quick-glance counts computed fresh from what's
+    // already loaded (not a duplicate of anything shown elsewhere on this page).
+    const lastActivityAt = labHistory[0] ? labHistory[0].created_at : null;
+    const labSummaryHtml = `
+      <div class="lab-summary-card">
+        <div class="lab-summary-stat"><span class="lab-summary-num">${labHistory.length}</span><span class="lab-summary-label">Total orders</span></div>
+        <div class="lab-summary-stat"><span class="lab-summary-num" style="color:var(--amber-500);">${openOrders.length}</span><span class="lab-summary-label">Open</span></div>
+        <div class="lab-summary-stat"><span class="lab-summary-num" style="color:var(--green-500);">${finishedOrders.length}</span><span class="lab-summary-label">Completed</span></div>
+        <div class="lab-summary-stat"><span class="lab-summary-num" style="font-size:13px;">${lastActivityAt ? formatDate(lastActivityAt) : "—"}</span><span class="lab-summary-label">Last activity</span></div>
+      </div>
+    `;
+
+    // "Attachments (PDF + Images)" — a flat gallery of every file uploaded
+    // against any test on any order for this patient, newest first.
+    const allLabFiles = [];
+    labHistory.forEach((o) => {
+      (labHistoryTests[o.id] || []).forEach((t) => {
+        (t.files || []).forEach((f) => allLabFiles.push({ ...f, testName: t.test_name, orderCreatedAt: o.created_at }));
+      });
+    });
+    allLabFiles.sort((a, b) => new Date(b.orderCreatedAt) - new Date(a.orderCreatedAt));
+
+    const attachmentsGalleryHtml = allLabFiles.length === 0
+      ? `<div class="empty-note" style="padding:8px 0;">No attachments uploaded yet.</div>`
+      : `<div class="lab-attachments-grid">${allLabFiles.map((f) => `
+          <div class="file-item">
+            <a href="${f.file_url}" target="_blank" title="Open ${f.file_name}">
+              ${isImageFilename(f.file_name) ? `<img class="thumb" src="${f.file_url}" alt="${f.file_name}">` : `<div class="thumb">📄</div>`}
+            </a>
+            <div class="fname">${f.file_name}</div>
+            <div class="flinks">
+              <a href="${f.file_url}" download="${f.file_name}">Download</a>
+              <button type="button" class="file-delete-link" data-delete-file="${f.id}" title="Delete file">✕</button>
+              ${aounIsAnalyzableFile(f.file_name) ? `<button type="button" class="aoun-pill sm" data-aoun-analyze-pdf="${encodeURIComponent(f.file_url)}" data-aoun-pdf-name="${encodeURIComponent(f.file_name)}" data-aoun-pdf-patient="${patientId}" data-aoun-pdf-test="${encodeURIComponent(f.testName)}">🤖 Aoun Analyze</button>` : ""}
+            </div>
+          </div>
+        `).join("")}</div>`;
+
     const notesHtml = notes.length === 0
       ? `<div class="empty-note" style="padding:8px 0;">No notes yet.</div>`
       : notes.map((n) => `
           <div class="note-row">
             ${n.note}
-            <div class="note-meta">${nameCache[n.doctor_id] || "Unknown"} · ${formatDate(n.created_at)}</div>
+            <div class="note-meta">
+              ${nameCache[n.doctor_id] || "Unknown"} · ${formatDate(n.created_at)}
+              ${n.doctor_id === me.user_id ? `<button type="button" class="file-delete-link" data-delete-note="${n.id}" title="Delete note" style="margin-left:8px;">✕ Remove</button>` : ""}
+            </div>
           </div>
         `).join("");
 
@@ -3881,12 +4514,33 @@
     const latestLabLabel = latestLab
       ? `${latestLab.test_name}${latestLab.notes ? " · flagged" : ""} (${latestLab.status === "Finished (Result Collected)" ? "completed" : "pending"})`
       : "No labs on file";
-    const diagnosisText = notes.length ? (notes[0].note.length > 80 ? notes[0].note.slice(0, 80) + "…" : notes[0].note) : "Pending documentation";
+    // Diagnosis now lives on patients.diagnosis (a real, doctor-entered
+    // field) — falling back to a note-derived guess only for older records
+    // from before this field existed, so nothing regresses to blank.
+    const diagnosisText = currentPatient && currentPatient.diagnosis
+      ? currentPatient.diagnosis
+      : (notes.length ? (notes[0].note.length > 80 ? notes[0].note.slice(0, 80) + "…" : notes[0].note) : "Pending documentation");
     const assignedDoctor = canEditThisPatient ? (me.full_name || "You") : (notes.length ? (nameCache[notes[0].doctor_id] || "—") : "—");
+
+    const diagnosisValueHtml = canEditThisPatient
+      ? `
+        <div class="snap-value diagnosis-view" id="diagnosis-view-${patientId}">
+          <span id="diagnosis-text-${patientId}">${aounEscape(diagnosisText)}</span>
+          <button type="button" class="diagnosis-edit-btn" id="diagnosis-edit-btn-${patientId}" title="Edit diagnosis"><i class="ti ti-pencil"></i></button>
+        </div>
+        <div class="diagnosis-edit-row" id="diagnosis-edit-${patientId}" style="display:none;">
+          <textarea id="diagnosis-input-${patientId}" class="field-input diagnosis-textarea" rows="2" placeholder="Enter diagnosis…">${currentPatient && currentPatient.diagnosis ? aounEscape(currentPatient.diagnosis) : ""}</textarea>
+          <div class="diagnosis-edit-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="diagnosis-save-${patientId}">Save</button>
+            <button type="button" class="secondary btn-sm" id="diagnosis-cancel-${patientId}">Cancel</button>
+          </div>
+        </div>
+      `
+      : `<div class="snap-value">${aounEscape(diagnosisText)}</div>`;
 
     const snapshotHtml = currentPatient ? `
       <div class="patient-snapshot">
-        <div class="snap-cell snap-span-2"><div class="snap-label">Diagnosis</div><div class="snap-value">${aounEscape(diagnosisText)}</div></div>
+        <div class="snap-cell snap-span-2"><div class="snap-label">Diagnosis</div>${diagnosisValueHtml}</div>
         <div class="snap-cell"><div class="snap-label">Age</div><div class="snap-value">${currentPatient.age ?? "—"} · ${currentPatient.gender || "—"}</div></div>
         <div class="snap-cell"><div class="snap-label">Blood Type</div><div class="snap-value">${aounEscape(currentPatient.blood_type || "Unknown")}</div></div>
         <div class="snap-cell snap-span-2"><div class="snap-label">Allergies</div><div class="snap-value">${aounEscape(currentPatient.allergies || "None recorded")}</div></div>
@@ -3912,8 +4566,8 @@
         ${currentPatient && currentPatient.status === "Discharged"
           ? `<div class="empty-note" style="padding:0;">This patient has been discharged.</div>`
           : canEditThisPatient
-            ? `<button class="transfer-btn" data-transfer-for="${patientId}">Change department</button><button class="discharge-btn" data-discharge-for="${patientId}">Discharge patient</button>`
-            : `<div class="empty-note" style="padding:0;">Only a doctor in ${currentPatient ? currentPatient.section : "this patient's"} · ${currentPatient ? currentPatient.specialty : ""} can discharge or transfer this patient.</div>`
+            ? `<button class="transfer-btn" data-transfer-for="${patientId}">Change department</button>`
+            : `<div class="empty-note" style="padding:0;">Only a doctor in ${currentPatient ? currentPatient.section : "this patient's"} · ${currentPatient ? currentPatient.specialty : ""} can transfer this patient.</div>`
         }
       </div>
     `;
@@ -4014,12 +4668,6 @@
 
       <div class="detail-tab-panel ${activeTab === "labs" ? "active" : ""}" data-detail-panel="labs">
         <div id="aoun-pdf-analysis-slot-${patientId}"></div>
-        <div class="aoun-pdf-dropzone" id="aoun-pdf-dropzone-${patientId}">
-          <i class="ti ti-file-type-pdf"></i>
-          Drop a medical PDF here or click to upload<br>
-          <span style="font-size:11px;color:var(--muted-soft);">CBC · Lab Reports · MRI · CT · Ultrasound · Radiology · Consultation · Discharge Summary</span>
-        </div>
-        <input type="file" id="aoun-pdf-input-${patientId}" accept=".pdf,application/pdf" style="display:none;">
         <div class="detail-block" style="margin-top:16px;">
           <div class="label">Lab history</div>
           ${labHistoryHtml}
@@ -4110,8 +4758,13 @@
 
     bindLabOrderCardEvents(detailEl);
 
-    Aoun.bindPdfDropzone(patientId);
 
+
+    // Background auto-analysis stays PDF-only on purpose: OCR is
+    // comparatively slow/CPU-heavy, so silently running it on every image
+    // every time a patient's chart is opened isn't worth it. Images are
+    // still fully analyzable — just via the explicit Analyze button (see
+    // aounIsAnalyzableFile) rather than automatically in the background.
     const pdfItems = [];
     labHistory.forEach((o) => {
       (o.tests || []).forEach((t) => {
@@ -4128,19 +4781,64 @@
     detailEl.querySelector(`[data-aoun-summary="${patientId}"]`)?.addEventListener("click", () => Aoun.openPatientSummary(patientId));
     detailEl.querySelector(`[data-aoun-note="${patientId}"]`)?.addEventListener("click", () => Aoun.openClinicalNote(patientId));
 
-    const dischargeBtn = detailEl.querySelector(`[data-discharge-for="${patientId}"]`);
-    if (dischargeBtn) {
-      dischargeBtn.addEventListener("click", async () => {
-        if (!confirm("Mark this patient as discharged?")) return;
-        await supabaseClient.from("patients").update({ status: "Discharged" }).eq("id", patientId);
-        await loadPatients(); // refreshes the list so the status badge updates everywhere
-      });
-    }
-
     const transferBtn = detailEl.querySelector(`[data-transfer-for="${patientId}"]`);
     if (transferBtn) {
       transferBtn.addEventListener("click", () => openTransferModal(patientId));
     }
+
+    // Diagnosis inline edit — pencil reveals a textarea; Save writes straight
+    // to patients.diagnosis (covered by the same department+specialty RLS
+    // policy as every other field on this record).
+    const diagEditBtn = detailEl.querySelector(`#diagnosis-edit-btn-${patientId}`);
+    if (diagEditBtn) {
+      const viewEl = detailEl.querySelector(`#diagnosis-view-${patientId}`);
+      const editEl = detailEl.querySelector(`#diagnosis-edit-${patientId}`);
+      const inputEl = detailEl.querySelector(`#diagnosis-input-${patientId}`);
+      const saveBtn = detailEl.querySelector(`#diagnosis-save-${patientId}`);
+      const cancelBtn = detailEl.querySelector(`#diagnosis-cancel-${patientId}`);
+
+      diagEditBtn.addEventListener("click", () => {
+        viewEl.style.display = "none";
+        editEl.style.display = "flex";
+        inputEl.focus();
+        inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+      });
+
+      cancelBtn.addEventListener("click", () => {
+        editEl.style.display = "none";
+        viewEl.style.display = "flex";
+      });
+
+      const saveDiagnosis = async () => {
+        const value = inputEl.value.trim();
+        saveBtn.disabled = true;
+        const { error } = await supabaseClient
+          .from("patients")
+          .update({ diagnosis: value || null })
+          .eq("id", patientId);
+        saveBtn.disabled = false;
+        if (error) { alert("Couldn't save diagnosis: " + error.message); return; }
+        const p = patients.find((x) => x.id === patientId);
+        if (p) p.diagnosis = value || null;
+        loadPatientDetail(patientId);
+      };
+
+      saveBtn.addEventListener("click", saveDiagnosis);
+      inputEl.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") saveDiagnosis();
+      });
+    }
+
+    detailEl.querySelectorAll("[data-delete-note]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const noteId = btn.dataset.deleteNote;
+        if (!confirm("Remove this note? This can't be undone.")) return;
+        btn.disabled = true;
+        const { error } = await supabaseClient.from("patient_notes").delete().eq("id", noteId).eq("doctor_id", me.user_id);
+        if (error) { alert("Couldn't remove note: " + error.message); btn.disabled = false; return; }
+        loadPatientDetail(patientId);
+      });
+    });
   }
 
   document.getElementById("patient-search").addEventListener("input", renderPatients);
@@ -4502,25 +5200,9 @@
     "Heparin", "Enoxaparin", "Insulin", "Prednisone", "Penicillin", "Vancomycin", "Gentamicin",
   ];
 
-  const AOUN_INTERACTIONS = [
-    { a: /warfarin/i, b: /aspirin|ibuprofen|naproxen|diclofenac/i, sev: "severe", text: "Combined anticoagulant + antiplatelet/NSAID effect significantly raises bleeding risk. Avoid if possible; if unavoidable, use the lowest effective dose with close INR and clinical monitoring." },
-    { a: /warfarin/i, b: /amiodarone/i, sev: "severe", text: "Amiodarone inhibits warfarin metabolism, raising INR and bleeding risk. Anticipate a warfarin dose reduction and monitor INR closely after starting or stopping amiodarone." },
-    { a: /warfarin/i, b: /trimethoprim/i, sev: "severe", text: "Trimethoprim-sulfamethoxazole potentiates warfarin's effect. Monitor INR closely if co-prescribed." },
-    { a: /lisinopril|enalapril|losartan/i, b: /spironolactone/i, sev: "moderate", text: "Combined risk of hyperkalemia. Monitor serum potassium and renal function, especially at initiation or dose changes." },
-    { a: /lisinopril|enalapril/i, b: /ibuprofen|naproxen|diclofenac/i, sev: "moderate", text: "NSAIDs can blunt the antihypertensive effect and reduce renal perfusion — risk is higher still if a diuretic is also on board (the 'triple whammy'). Monitor renal function and blood pressure." },
-    { a: /metformin/i, b: /contrast/i, sev: "moderate", text: "Iodinated contrast can transiently impair renal clearance of metformin, raising lactic acidosis risk. Consider holding metformin around contrast studies per local protocol." },
-    { a: /simvastatin|atorvastatin/i, b: /clarithromycin|erythromycin/i, sev: "severe", text: "Macrolides inhibit statin metabolism (CYP3A4), raising myopathy/rhabdomyolysis risk. Consider a temporary statin hold or an alternative antibiotic." },
-    { a: /sertraline|fluoxetine/i, b: /tramadol/i, sev: "moderate", text: "Combined serotonergic effect raises serotonin syndrome risk. Monitor for agitation, tremor, and autonomic instability." },
-    { a: /sertraline|fluoxetine/i, b: /phenelzine/i, sev: "severe", text: "SSRI + MAOI combination carries a serious serotonin syndrome risk and is generally contraindicated. Ensure an adequate washout period between the two." },
-    { a: /digoxin/i, b: /amiodarone/i, sev: "severe", text: "Amiodarone raises digoxin levels — anticipate a digoxin dose reduction and monitor levels/ECG for toxicity." },
-    { a: /digoxin/i, b: /furosemide/i, sev: "moderate", text: "Diuretic-induced hypokalemia increases digoxin toxicity risk. Monitor electrolytes." },
-    { a: /sildenafil/i, b: /nitroglycerin/i, sev: "severe", text: "Combined use can cause severe, life-threatening hypotension. This combination should be avoided." },
-    { a: /methotrexate/i, b: /ibuprofen|naproxen|diclofenac|trimethoprim/i, sev: "severe", text: "NSAIDs and trimethoprim can reduce methotrexate clearance, raising toxicity risk. Use with caution and monitor levels and blood counts." },
-    { a: /clopidogrel/i, b: /omeprazole/i, sev: "moderate", text: "Omeprazole may reduce clopidogrel's antiplatelet activation via CYP2C19 inhibition. Consider pantoprazole as an alternative if a PPI is needed." },
-    { a: /lithium/i, b: /ibuprofen|naproxen|diclofenac|furosemide|lisinopril|enalapril/i, sev: "moderate", text: "NSAIDs, diuretics, and ACE inhibitors can all reduce lithium clearance and raise toxicity risk. Monitor lithium levels closely." },
-    { a: /verapamil|diltiazem/i, b: /metoprolol/i, sev: "moderate", text: "Combined non-dihydropyridine calcium channel blocker and beta-blocker can cause significant bradycardia or AV block. Monitor heart rate and rhythm." },
-    { a: /heparin|enoxaparin/i, b: /aspirin|ibuprofen|naproxen|diclofenac|warfarin/i, sev: "moderate", text: "Combined anticoagulant/antiplatelet effect raises bleeding risk. Monitor closely and weigh the clinical indication for combined therapy." },
-  ];
+  // Interaction rules now live in the real `drug_interactions` table in
+  // Supabase (94 documented pairs with mechanism + recommendation) instead
+  // of a hardcoded list here — see Aoun.openDrugChecker().
 
   function aounEscape(str) {
     return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -4645,8 +5327,85 @@
     return res.arrayBuffer();
   }
 
-  async function aounExtractPdfText(source) {
+  // pdf.min.js is loaded with `defer` so it never blocks the page's first
+  // paint — it's only actually needed once a doctor opens Labs, prints, or
+  // uploads a PDF, all well after initial load. That means the worker
+  // can't be configured eagerly at the top of the page anymore (pdfjsLib
+  // may not exist yet at that point); this sets it up on first real use
+  // instead, exactly once.
+  function aounEnsurePdfWorker() {
     if (typeof pdfjsLib === "undefined") throw new Error("PDF reader is not available.");
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "assets/vendor/pdf.worker.min.js";
+    }
+  }
+
+  // Renders every page of a PDF to an off-screen <canvas> at a resolution
+  // good enough for OCR/printing. Shared by the OCR fallback below and by
+  // the print fix further down — anywhere the app needs actual pixels
+  // instead of (or in addition to) the text layer.
+  async function aounRenderPdfPagesToCanvases(source, scale) {
+    aounEnsurePdfWorker();
+    const data = await aounFetchPdfArrayBuffer(source);
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const canvases = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: scale || 2 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      canvases.push(canvas);
+    }
+    return canvases;
+  }
+
+  let aounOcrWorker = null;
+  async function aounGetOcrWorker() {
+    if (aounOcrWorker) return aounOcrWorker;
+    if (typeof Tesseract === "undefined") throw new Error("OCR reader is not available.");
+    aounOcrWorker = await Tesseract.createWorker("eng", 1, {
+      workerPath: "assets/vendor/tesseract/worker.min.js",
+      corePath: "assets/vendor/tesseract/",
+      langPath: "assets/vendor/tesseract/",
+    });
+    return aounOcrWorker;
+  }
+
+  // Scanned/photographed lab reports have no real text layer, so
+  // aounExtractPdfText() comes back empty for them — this reads the page
+  // images with OCR instead. Slower than direct extraction (a few seconds
+  // per page), so it's only used as a fallback, and only when needed.
+  async function aounOcrPdfText(source, onProgress) {
+    const canvases = await aounRenderPdfPagesToCanvases(source, 2.5);
+    const worker = await aounGetOcrWorker();
+    const pageTexts = [];
+    for (let i = 0; i < canvases.length; i++) {
+      if (onProgress) onProgress(i + 1, canvases.length);
+      const { data } = await worker.recognize(canvases[i]);
+      pageTexts.push(data.text);
+    }
+    return pageTexts.join("\n").replace(/\r/g, "");
+  }
+
+  // A lab report uploaded directly as a photo/scan (PNG/JPG, not wrapped in
+  // a PDF) — Tesseract can read a File/Blob or an image URL directly, no
+  // PDF rendering step needed first.
+  async function aounOcrImageText(source, onProgress) {
+    const worker = await aounGetOcrWorker();
+    if (onProgress) onProgress(1, 1);
+    // Fetch the bytes ourselves (same path already used for PDFs) rather
+    // than handing Tesseract a bare URL to load internally — keeps image
+    // loading behavior consistent and avoids relying on Tesseract's own
+    // cross-origin fetch handling for a stored file URL.
+    const blob = typeof source === "string" ? new Blob([await aounFetchPdfArrayBuffer(source)]) : source;
+    const { data } = await worker.recognize(blob);
+    return (data.text || "").replace(/\r/g, "");
+  }
+
+  async function aounExtractPdfText(source) {
+    aounEnsurePdfWorker();
     const data = await aounFetchPdfArrayBuffer(source);
     const pdf = await pdfjsLib.getDocument({ data }).promise;
     const pageTexts = [];
@@ -4789,7 +5548,7 @@
       .order("uploaded_at", { ascending: false });
 
     return (files || [])
-      .filter((f) => /\.pdf$/i.test(f.file_name) && f.file_url !== currentFileUrl)
+      .filter((f) => aounIsAnalyzableFile(f.file_name) && f.file_url !== currentFileUrl)
       .map((f) => {
         const cached = aounPdfAnalysisCache[aounPdfCacheKey(patientId, f.file_url)];
         return cached ? { ...cached, fileName: f.file_name, uploadedAt: f.uploaded_at } : null;
@@ -5038,9 +5797,27 @@
     `;
   }
 
-  async function aounProcessMedicalPdf(source, fileName, patientId, testName) {
-    const text = await aounExtractPdfText(source);
-    if (!text || text.trim().length < 10) throw new Error("Could not extract readable text from this PDF.");
+  async function aounProcessMedicalPdf(source, fileName, patientId, testName, onStatus) {
+    let text;
+    if (isImageFilename(fileName)) {
+      // A photo/scan uploaded directly as an image, not wrapped in a PDF —
+      // there's no text layer to even attempt extracting, go straight to OCR.
+      if (onStatus) onStatus("Reading image…");
+      text = await aounOcrImageText(source);
+      if (!text || text.trim().length < 10) throw new Error("Could not read this image. Try a clearer, well-lit photo of the report.");
+    } else {
+      text = await aounExtractPdfText(source);
+      if (!text || text.trim().length < 10) {
+        // No real text layer — this is very likely a scanned/photographed
+        // report rather than a digitally-generated PDF. Fall back to OCR
+        // instead of just failing.
+        if (onStatus) onStatus("Reading scanned pages…");
+        text = await aounOcrPdfText(source, (page, total) => {
+          if (onStatus) onStatus(`Reading scanned page ${page} of ${total}…`);
+        });
+        if (!text || text.trim().length < 10) throw new Error("Could not read this PDF, even with OCR. Try a clearer scan or a higher-resolution photo.");
+      }
+    }
     const reportType = aounDetectReportType(text, fileName, testName);
     const values = aounParseNumericLabValues(text);
     const terminology = aounExtractMedicalTerminology(text);
@@ -5062,11 +5839,15 @@
     openPanel() {
       document.getElementById("aoun-panel").classList.add("show");
       document.getElementById("aoun-fab-dot").classList.remove("show");
+      document.body.classList.add("overlay-open");
       Aoun.hidePicker();
       Aoun.renderProactiveBrief();
       Aoun.renderPanelSuggestions();
     },
-    closePanel() { document.getElementById("aoun-panel").classList.remove("show"); },
+    closePanel() {
+      document.getElementById("aoun-panel").classList.remove("show");
+      document.body.classList.remove("overlay-open");
+    },
     togglePanel() {
       document.getElementById("aoun-panel").classList.contains("show") ? Aoun.closePanel() : Aoun.openPanel();
     },
@@ -5096,6 +5877,8 @@
       aounPickerMode = mode;
       const wrap = document.getElementById("aoun-panel-picker");
       const input = document.getElementById("aoun-picker-input");
+      document.getElementById("aoun-quick-actions-section").style.display = "none";
+      document.getElementById("aoun-proactive-alerts-section").style.display = "none";
       wrap.style.display = "block";
       input.value = "";
       input.focus();
@@ -5105,6 +5888,8 @@
       aounPickerMode = null;
       document.getElementById("aoun-panel-picker").style.display = "none";
       document.getElementById("aoun-picker-list").classList.remove("show");
+      document.getElementById("aoun-quick-actions-section").style.display = "";
+      document.getElementById("aoun-proactive-alerts-section").style.display = "";
     },
     renderPickerList(query) {
       const listEl = document.getElementById("aoun-picker-list");
@@ -5281,39 +6066,60 @@
 
     // ── 3. Drug Interaction Checker ──
     openDrugChecker() {
-      const options = AOUN_DRUG_LIST.map((d) => `<option value="${d}"></option>`).join("");
-      Aoun.openModal("💊 Drug Interaction Checker", "Check two medications against Aoun's reference table", `
-        <p style="color:var(--muted-strong); margin-bottom:14px;">Type or pick two medications. This checks against a curated set of well-known interactions — always confirm against your hospital formulary for anything not listed here.</p>
-        <datalist id="aoun-drug-datalist">${options}</datalist>
-        <input type="text" id="aoun-drug-a" list="aoun-drug-datalist" placeholder="First medication (e.g. Warfarin)">
-        <input type="text" id="aoun-drug-b" list="aoun-drug-datalist" placeholder="Second medication (e.g. Ibuprofen)">
+      const options = `<option value="">Select medication…</option>` + AOUN_DRUG_LIST.slice().sort().map((d) => `<option value="${aounEscape(d)}">${aounEscape(d)}</option>`).join("");
+      Aoun.openModal("💊 Drug Interaction Checker", "Check two medications against Aoun's reference database", `
+        <p style="color:var(--muted-strong); margin-bottom:14px;">Pick two medications from the list. This checks against a curated clinical reference database — always confirm against your hospital formulary/pharmacy for anything not listed here.</p>
+        <select id="aoun-drug-a">${options}</select>
+        <select id="aoun-drug-b">${options}</select>
         <div class="aoun-modal-footer">
           <button class="btn btn-primary btn-sm" id="aoun-drug-check-run">Check interaction</button>
         </div>
         <div id="aoun-drug-result" style="margin-top:14px;"></div>
       `);
-      document.getElementById("aoun-drug-check-run").addEventListener("click", () => {
+
+      document.getElementById("aoun-drug-check-run").addEventListener("click", async () => {
         const a = document.getElementById("aoun-drug-a").value.trim();
         const b = document.getElementById("aoun-drug-b").value.trim();
         const resultEl = document.getElementById("aoun-drug-result");
-        if (!a || !b) { resultEl.innerHTML = `<p style="color:var(--red-500);">Enter both medications to check.</p>`; return; }
+        if (!a || !b) { resultEl.innerHTML = `<p style="color:var(--red-500);">Select both medications to check.</p>`; return; }
+        if (a === b) { resultEl.innerHTML = `<p style="color:var(--red-500);">Select two different medications.</p>`; return; }
 
-        const rule = AOUN_INTERACTIONS.find((r) => (r.a.test(a) && r.b.test(b)) || (r.a.test(b) && r.b.test(a)));
+        resultEl.innerHTML = `<p style="color:var(--muted-strong);">Checking…</p>`;
+
+        // PostgREST's .or() filter syntax treats commas/parentheses/periods
+        // as delimiters — "Phenelzine (MAOI)" would otherwise break the
+        // filter string. Wrapping each value in double quotes (with any
+        // literal quote escaped) makes it safe regardless of what
+        // punctuation a drug name contains.
+        const pgSafe = (s) => `"${s.replace(/"/g, '\\"')}"`;
+        const { data: rows, error } = await supabaseClient
+          .from("drug_interactions")
+          .select("severity, mechanism, recommendation")
+          .or(`and(drug_a.ilike.${pgSafe(a)},drug_b.ilike.${pgSafe(b)}),and(drug_a.ilike.${pgSafe(b)},drug_b.ilike.${pgSafe(a)})`)
+          .limit(1);
+
+        if (error) {
+          resultEl.innerHTML = `<p style="color:var(--red-500);">Couldn't check interaction: ${aounEscape(error.message)}. Check your connection and try again.</p>`;
+          return;
+        }
+
+        const rule = rows && rows[0];
         if (rule) {
           resultEl.innerHTML = `
             <div class="aoun-recommend-box">
-              <div style="margin-bottom:8px;"><span class="aoun-severity ${rule.sev}">${rule.sev}</span></div>
+              <div style="margin-bottom:8px;"><span class="aoun-severity ${rule.severity}">${rule.severity}</span></div>
               <strong>Possible interaction:</strong> ${aounEscape(a)} + ${aounEscape(b)}<br>
-              <p style="margin-top:8px;">${aounEscape(rule.text)}</p>
+              <p style="margin-top:8px;"><strong>Mechanism:</strong> ${aounEscape(rule.mechanism)}</p>
+              <p style="margin-top:6px;"><strong>Recommendation:</strong> ${aounEscape(rule.recommendation)}</p>
             </div>`;
           // Feed the real Insights card — "Medication Alerts" counts interactions
           // actually surfaced this session (there's no per-patient medication
           // list in the DB to scan automatically, so this reflects real checks).
           aounMedicationAlertCount++;
           Aoun.computeAlerts().catch(() => {});
-          Aoun.showToast("💊", `Interaction flagged: ${a} + ${b} (${rule.sev})`);
+          Aoun.showToast("💊", `Interaction flagged: ${a} + ${b} (${rule.severity})`);
         } else {
-          resultEl.innerHTML = `<div class="aoun-recommend-box">No specific interaction is documented in Aoun's reference list for <strong>${aounEscape(a)}</strong> + <strong>${aounEscape(b)}</strong>. This list isn't exhaustive — please verify against a full drug interaction database or pharmacy before prescribing.</div>`;
+          resultEl.innerHTML = `<div class="aoun-recommend-box">No specific interaction is documented in Aoun's reference database for <strong>${aounEscape(a)}</strong> + <strong>${aounEscape(b)}</strong>. This database isn't exhaustive — please verify against a full drug interaction reference or pharmacy before prescribing.</div>`;
         }
       });
     },
@@ -5352,54 +6158,52 @@
     },
 
     // ── 5. Generate Clinical Note (SOAP) ──
-    async openClinicalNote(patientId) {
+    // Aoun only prepares the template shell and pre-fills the identifying
+    // header (patient, ID, date, doctor) — it never writes clinical content
+    // into Subjective/Objective/Assessment/Plan. Those stay blank with a
+    // faint placeholder until the physician types their own judgment,
+    // exactly like a real EMR template.
+    openClinicalNote(patientId) {
       const p = patients.find((x) => x.id === patientId);
       if (!p) return;
-      Aoun.openModal(`📝 Clinical Note — ${p.full_name}`, "Draft SOAP note, ready for your review", Aoun.loadingHtml("Drafting from the chart…"));
 
-      const [notesRes, labsRes] = await Promise.all([
-        supabaseClient.from("patient_notes").select("note, created_at").eq("patient_id", patientId).order("created_at", { ascending: false }).limit(3),
-        supabaseClient.from("lab_requests").select("test_name, status, notes").eq("patient_id", patientId).order("requested_at", { ascending: false }).limit(5),
-      ]);
-      const notes = notesRes.data || [];
-      const labs = labsRes.data || [];
-      const { level, reasons } = aounPriorityFor(p);
-      const meta = aounPriorityMeta(level);
       const today = new Date().toLocaleDateString();
+      const doctorName = me.full_name || "—";
+      const patientNumber = p.patient_number || "—";
 
-      const subjective = notes.length
-        ? notes.map((n) => `- ${n.note}`).join("\n")
-        : "- [ No prior notes on file — document the patient's current complaint/history here. ]";
-
-      const objective = [
-        `Age ${p.age ?? "—"} · ${p.gender || "—"} · Room ${p.room || "—"}`,
-        `Status: ${p.status || "—"} · Danger score: ${p.danger_score ?? "—"}/10 · Blood type: ${p.blood_type || "Unknown"}`,
-        `Allergies: ${p.allergies || "None recorded"}`,
-        labs.length ? `Labs on file: ${labs.map((l) => `${l.test_name} (${l.status === "Finished (Result Collected)" ? "completed" : "pending"}${l.notes ? `, flagged: ${l.notes}` : ""})`).join("; ")}` : "No lab requests on file.",
-      ].map((l) => `- ${l}`).join("\n");
-
-      const assessment = `- Aoun-computed risk tier: ${meta.label} (${reasons.join("; ")})\n- [ Add your clinical impression / working diagnosis here. ]`;
-      const plan = `- [ Add your management plan here. ]\n${labs.some((l) => l.status !== "Finished (Result Collected)") ? "- Follow up on pending lab results." : ""}`;
-
-      const draft = `SOAP NOTE — ${p.full_name} (${p.patient_number || ""})\nDate: ${today}\n\nSUBJECTIVE\n${subjective}\n\nOBJECTIVE\n${objective}\n\nASSESSMENT\n${assessment}\n\nPLAN\n${plan.trim()}`;
-
-      Aoun.setModalBody(`
-        <p style="color:var(--muted-strong); margin-bottom:10px;">Aoun has drafted a skeleton from the chart. Please review, complete the Assessment and Plan, and save — this is a starting point, not a finished clinical judgment.</p>
-        <textarea class="aoun-note-textarea" id="aoun-note-draft">${aounEscape(draft)}</textarea>
+      Aoun.openModal(`📝 Clinical Note — ${p.full_name}`, "Blank SOAP template — ready for your documentation", `
+        <div class="soap-header-grid">
+          <div class="soap-header-cell"><div class="lbl">Patient</div><div class="val">${aounEscape(p.full_name)}</div></div>
+          <div class="soap-header-cell"><div class="lbl">Patient ID</div><div class="val">${aounEscape(patientNumber)}</div></div>
+          <div class="soap-header-cell"><div class="lbl">Date</div><div class="val">${aounEscape(today)}</div></div>
+          <div class="soap-header-cell"><div class="lbl">Doctor</div><div class="val">${aounEscape(doctorName)}</div></div>
+        </div>
+        <p style="color:var(--muted-strong); margin: 12px 0 14px; font-size:12.5px;">Aoun has prepared the template only. Please complete each section with your own clinical documentation.</p>
+        <div class="aoun-soap-wrap">
+          <div class="aoun-soap-section">
+            <div class="aoun-soap-section-head">Subject</div>
+            <textarea id="soap-subject" placeholder="Write your clinical documentation..."></textarea>
+          </div>
+        </div>
         <div class="aoun-modal-footer">
-          <button class="btn btn-secondary btn-sm" id="aoun-note-copy">Copy</button>
           <button class="btn btn-primary btn-sm" id="aoun-note-save">Save as patient note</button>
         </div>
       `);
-      document.getElementById("aoun-note-copy").addEventListener("click", () => {
-        navigator.clipboard?.writeText(document.getElementById("aoun-note-draft").value);
-      });
+
+      const buildNoteText = () => {
+        const subject = document.getElementById("soap-subject").value.trim();
+        return `NOTE — ${p.full_name} (${patientNumber})\nDate: ${today}\nDoctor: ${doctorName}\n\nSUBJECT\n${subject || "—"}`;
+      };
+
       document.getElementById("aoun-note-save").addEventListener("click", async (e) => {
-        const text = document.getElementById("aoun-note-draft").value.trim();
-        if (!text) return;
+        const subject = document.getElementById("soap-subject").value.trim();
+        if (!subject) {
+          alert("Please complete the note before saving.");
+          return;
+        }
         e.target.disabled = true;
         e.target.textContent = "Saving…";
-        const { error } = await supabaseClient.from("patient_notes").insert({ patient_id: patientId, doctor_id: me.user_id, note: text });
+        const { error } = await supabaseClient.from("patient_notes").insert({ patient_id: patientId, doctor_id: me.user_id, note: buildNoteText() });
         if (error) { alert("Couldn't save note: " + error.message); e.target.disabled = false; e.target.textContent = "Save as patient note"; return; }
         Aoun.closeModal();
         if (openPatientId === patientId) loadPatientDetail(patientId);
@@ -5463,17 +6267,20 @@
         return aounPdfAnalysisCache[cacheKey];
       }
 
+      const kind = isImageFilename(fileName) ? "image" : "PDF";
       if (!silent && !auto) {
-        Aoun.openModal("🤖 Aoun PDF Analysis", "AI Clinical Decision Support", Aoun.loadingHtml("Reading and analyzing the medical PDF…"));
+        Aoun.openModal(`🤖 Aoun ${kind === "image" ? "Image" : "PDF"} Analysis`, "AI Clinical Decision Support", Aoun.loadingHtml(`Reading and analyzing the medical ${kind}…`));
       }
 
       try {
-        const analysis = await aounProcessMedicalPdf(fileUrl, fileName, patientId, testName);
+        const analysis = await aounProcessMedicalPdf(fileUrl, fileName, patientId, testName, (msg) => {
+          if (!silent && !auto) Aoun.setModalBody(Aoun.loadingHtml(msg));
+        });
         if (auto) {
           Aoun.mountAnalysisInPatientDetail(patientId, analysis);
-          Aoun.showToast("🤖", `Aoun analyzed ${fileName || "medical PDF"} — ${analysis.abnormalFindings.length + analysis.criticalFindings.length} finding(s) flagged`);
+          Aoun.showToast("🤖", `Aoun analyzed ${fileName || `medical ${kind}`} — ${analysis.abnormalFindings.length + analysis.criticalFindings.length} finding(s) flagged`);
           if (analysis.criticalFindings.length) {
-            Aoun.openModal("🚨 Critical PDF Findings", "AI Clinical Decision Support", aounRenderAnalysisCardHtml(analysis));
+            Aoun.openModal(`🚨 Critical ${kind === "image" ? "Image" : "PDF"} Findings`, "AI Clinical Decision Support", aounRenderAnalysisCardHtml(analysis));
           }
         } else if (!silent) {
           Aoun.setModalBody(aounRenderAnalysisCardHtml(analysis));
@@ -5481,17 +6288,18 @@
         return analysis;
       } catch (err) {
         if (!silent && !auto) {
-          Aoun.setModalBody(`<p style="color:var(--red-500);">Could not analyze this PDF: ${aounEscape(err.message || err)}</p>`);
+          Aoun.setModalBody(`<p style="color:var(--red-500);">Could not analyze this ${kind}: ${aounEscape(err.message || err)}</p>`);
         }
-        console.error("PDF analysis failed:", err);
+        console.error(`${kind} analysis failed:`, err);
         return null;
       }
     },
 
     async analyzePdfFile(file, patientId, testName) {
-      Aoun.openModal("🤖 Aoun PDF Analysis", "AI Clinical Decision Support", Aoun.loadingHtml("Reading and analyzing the uploaded PDF…"));
+      const kind = isImageFilename(file.name) ? "Image" : "PDF";
+      Aoun.openModal(`🤖 Aoun ${kind} Analysis`, "AI Clinical Decision Support", Aoun.loadingHtml(`Reading and analyzing the uploaded ${kind.toLowerCase()}…`));
       try {
-        const analysis = await aounProcessMedicalPdf(file, file.name, patientId, testName);
+        const analysis = await aounProcessMedicalPdf(file, file.name, patientId, testName, (msg) => Aoun.setModalBody(Aoun.loadingHtml(msg)));
         Aoun.setModalBody(aounRenderAnalysisCardHtml(analysis));
         Aoun.mountAnalysisInPatientDetail(patientId, analysis);
         Aoun.showToast("🤖", `Aoun analyzed ${file.name}`);
@@ -5505,7 +6313,28 @@
     mountAnalysisInPatientDetail(patientId, analysis) {
       if (!patientId || !analysis) return;
       const slot = document.getElementById(`aoun-pdf-analysis-slot-${patientId}`);
-      if (slot) slot.innerHTML = aounRenderAnalysisCardHtml(analysis);
+      if (!slot) return;
+      slot.innerHTML = `
+        <div class="aoun-analysis-mounted-wrap">
+          <button type="button" class="aoun-analysis-remove-btn" data-remove-pdf-analysis="${patientId}" title="Remove this analysis">
+            <i class="ti ti-trash" aria-hidden="true"></i> Remove
+          </button>
+          ${aounRenderAnalysisCardHtml(analysis)}
+        </div>
+      `;
+      slot.querySelector("[data-remove-pdf-analysis]")?.addEventListener("click", () => Aoun.removeMountedAnalysis(patientId));
+    },
+
+    // Dismisses a mounted PDF analysis card from the patient detail Labs tab
+    // (used for a report the doctor uploaded/dropped) and clears any cached
+    // copy so it doesn't silently reappear when the tab is reopened.
+    removeMountedAnalysis(patientId) {
+      const slot = document.getElementById(`aoun-pdf-analysis-slot-${patientId}`);
+      if (slot) slot.innerHTML = "";
+      Object.keys(aounPdfAnalysisCache).forEach((key) => {
+        if (key.startsWith(`${patientId}:`)) delete aounPdfAnalysisCache[key];
+      });
+      aounPersistPdfCache();
     },
 
     autoAnalyzePatientPdfs(patientId, pdfItems) {
@@ -5800,10 +6629,12 @@
     openRecoDrawer() {
       Aoun.renderRecoDrawer();
       document.getElementById("aoun-reco-drawer-backdrop").classList.add("show");
+      document.body.classList.add("overlay-open");
       document.body.style.overflow = "hidden";
     },
     closeRecoDrawer() {
       document.getElementById("aoun-reco-drawer-backdrop").classList.remove("show");
+      document.body.classList.remove("overlay-open");
       document.body.style.overflow = "";
     },
 
@@ -5835,10 +6666,20 @@
         bySection[r.section].push(r);
       });
 
+      const criticalCount = active.filter((r) => r.priority === "critical").length;
+      const highCount = active.filter((r) => r.priority === "high").length;
+      const summaryRow = `
+        <div class="aoun-reco-summary-row">
+          <span class="aoun-reco-summary-chip">${active.length} total</span>
+          ${criticalCount ? `<span class="aoun-reco-summary-chip crit">🚨 ${criticalCount} critical</span>` : ""}
+          ${highCount ? `<span class="aoun-reco-summary-chip high">⚠️ ${highCount} high</span>` : ""}
+        </div>
+      `;
+
       const sectionOrder = ["critical", "lab", "medication", "documentation", "imaging", "followup", "discharge", "waiting", "workload"];
-      body.innerHTML = sectionOrder.filter((k) => bySection[k]?.length).map((sectionKey) => `
+      body.innerHTML = summaryRow + sectionOrder.filter((k) => bySection[k]?.length).map((sectionKey) => `
         <div class="aoun-reco-section">
-          <div class="aoun-reco-section-title">${CDS_SECTION_LABELS[sectionKey]}</div>
+          <div class="aoun-reco-section-title">${CDS_SECTION_LABELS[sectionKey]}<span class="cnt">${bySection[sectionKey].length}</span></div>
           ${bySection[sectionKey].map((r) => Aoun.renderCdsCard(r)).join("")}
         </div>
       `).join("");
@@ -5868,7 +6709,7 @@
       actions.push(`<button type="button" class="cds-action-btn ghost" data-cds-action="dismiss" data-cds-id="${r.id}">Dismiss</button>`);
 
       return `
-        <div class="cds-card" data-cds-card="${r.id}">
+        <div class="cds-card ${r.priority}" data-cds-card="${r.id}">
           <div class="cds-card-head">
             <div>
               <div class="cds-title">${r.icon} ${aounEscape(r.title)}</div>
@@ -6042,45 +6883,76 @@
       document.getElementById("insight-shift").textContent = Aoun.shiftRemainingLabel();
     },
 
+    // Minutes remaining in today's shift (negative once it's over). Shared
+    // by shiftRemainingLabel(), computeShiftEndingSoon(), and the sign-out
+    // reminder below, so there's exactly one place that knows how to read
+    // the schedule.
+    minutesLeftInShift() {
+      const todayLetter = allShiftsMap[me.user_id] && allShiftsMap[me.user_id][DAYS[new Date().getDay()]];
+      if (!todayLetter) return null;
+      const label = SHIFT_LABELS[todayLetter];
+      const endStr = (label || "").split("–")[1];
+      const match = endStr && endStr.match(/(\d+)(am|pm)/i);
+      if (!match) return null;
+      let hour = parseInt(match[1], 10) % 12;
+      if (/pm/i.test(match[2])) hour += 12;
+      const end = new Date(); end.setHours(hour, 0, 0, 0);
+      return { minsLeft: Math.round((end - new Date()) / 60000), endStr };
+    },
+
     // Minutes remaining in today's shift, formatted "2h 14m" — reuses the
     // same schedule data as computeShiftEndingSoon(), just without the
     // "only if under 60 minutes" cutoff.
     shiftRemainingLabel() {
       try {
-        const todayLetter = allShiftsMap[me.user_id] && allShiftsMap[me.user_id][DAYS[new Date().getDay()]];
-        if (!todayLetter) return "Off today";
-        const label = SHIFT_LABELS[todayLetter];
-        const endStr = (label || "").split("–")[1];
-        const match = endStr && endStr.match(/(\d+)(am|pm)/i);
-        if (!match) return "—";
-        let hour = parseInt(match[1], 10) % 12;
-        if (/pm/i.test(match[2])) hour += 12;
-        const end = new Date(); end.setHours(hour, 0, 0, 0);
-        const minsLeft = Math.round((end - new Date()) / 60000);
-        if (minsLeft <= 0) return "Shift ended";
-        const h = Math.floor(minsLeft / 60), m = minsLeft % 60;
+        const info = Aoun.minutesLeftInShift();
+        if (!info) return "Off today";
+        if (info.minsLeft <= 0) return "Shift ended";
+        const h = Math.floor(info.minsLeft / 60), m = info.minsLeft % 60;
         return h > 0 ? `${h}h ${m}m` : `${m}m`;
       } catch (e) { return "—"; }
     },
 
     computeShiftEndingSoon() {
       try {
-        const todayLetter = allShiftsMap[me.user_id] && allShiftsMap[me.user_id][DAYS[new Date().getDay()]];
-        if (!todayLetter) return null;
-        const label = SHIFT_LABELS[todayLetter];
-        const endStr = (label || "").split("–")[1];
-        if (!endStr) return null;
-        const match = endStr.match(/(\d+)(am|pm)/i);
-        if (!match) return null;
-        let hour = parseInt(match[1], 10) % 12;
-        if (/pm/i.test(match[2])) hour += 12;
-        const end = new Date(); end.setHours(hour, 0, 0, 0);
-        const minsLeft = (end - new Date()) / 60000;
-        if (minsLeft > 0 && minsLeft <= 60) {
-          return { id: "shift-ending", icon: "⏰", color: "amber", title: "Your shift ends soon", sub: `Ends around ${endStr.toUpperCase()} — consider completing documentation`, onClick: () => Aoun.openRecoDrawer() };
+        const info = Aoun.minutesLeftInShift();
+        if (!info) return null;
+        if (info.minsLeft > 0 && info.minsLeft <= 60) {
+          return { id: "shift-ending", icon: "⏰", color: "amber", title: "Your shift ends soon", sub: `Ends around ${info.endStr.toUpperCase()} — consider completing documentation`, onClick: () => Aoun.openRecoDrawer() };
         }
       } catch (e) { /* schedule not loaded yet */ }
       return null;
+    },
+
+    // Real, persistent nudge (not just an AI Recommendations card) to sign
+    // out once a shift is actually over — this is the moment a shared/ward
+    // device is most likely to be left logged in for the next doctor.
+    // Shown once per shift per day, and stays up (doesn't auto-dismiss)
+    // until the doctor acts on it or explicitly closes it.
+    checkShiftEndReminder() {
+      const info = Aoun.minutesLeftInShift();
+      if (!info || info.minsLeft > 0 || info.minsLeft < -180) return; // not ended, or ended too long ago to still be relevant
+
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const flagKey = `shift_end_reminder_shown_${todayKey}`;
+      if (sessionStorage.getItem(flagKey) || document.getElementById("shift-end-reminder")) return;
+      sessionStorage.setItem(flagKey, "1");
+
+      const el = document.createElement("div");
+      el.id = "shift-end-reminder";
+      el.className = "shift-end-reminder";
+      el.innerHTML = `
+        <span class="icon">🕐</span>
+        <div class="body">
+          <div class="title">Your shift has ended</div>
+          <div class="sub">If you're handing this device to the next doctor, sign out so their session starts fresh.</div>
+        </div>
+        <button type="button" class="shift-end-signout" id="shift-end-signout-btn">Sign out</button>
+        <button type="button" class="shift-end-dismiss" id="shift-end-dismiss-btn" aria-label="Dismiss">&times;</button>
+      `;
+      document.body.appendChild(el);
+      document.getElementById("shift-end-signout-btn").addEventListener("click", () => document.getElementById("logout-btn").click());
+      document.getElementById("shift-end-dismiss-btn").addEventListener("click", () => el.remove());
     },
 
     // ── Daily overview greeting (once per session) ──
@@ -6146,23 +7018,303 @@
     document.querySelector(`.nav-btn[data-tab="${tabName}"]`)?.click();
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // PROFILE & SETTINGS
+  //
+  // Everything here writes to real columns on `profiles`
+  // (email, phone, medical_license, biography, availability_status,
+  // signature_url, preferences jsonb) and to Supabase Auth directly
+  // (change password, last sign-in). Two-Factor Authentication and
+  // Active Device Sessions are intentionally NOT implemented as UI —
+  // this backend doesn't support them yet, and the "Account & Security"
+  // tab says so plainly instead of showing a toggle that does nothing.
+  // ══════════════════════════════════════════════════════════════
+  const SETTINGS_LANG_STRINGS = {
+    en: { home: "Home", chat: "Chat", patients: "Patients", settings: "Settings", signOut: "Sign out" },
+    ar: { home: "الرئيسية", chat: "الدردشة", patients: "المرضى", settings: "الإعدادات", signOut: "تسجيل الخروج" },
+  };
+
+  let settingsActiveTab = "profile";
+  let pendingSignatureFile = null;
+  let pendingPhotoFile = null;
+
+  function defaultPrefs() {
+    return {
+      notif_messages: true,
+      notif_shift: true,
+      notif_critical: true,
+      notif_lab: true,
+      notif_imaging: true,
+      ai_recommendations: true,
+      ai_explanation_level: "standard", // minimal | standard | detailed
+      sound: false,
+      theme: null, // resolved from data-theme attribute, not stored here
+      language: "en",
+      font_size: "medium", // small | medium | large
+      compact_mode: false,
+      show_schedule_section: true,
+      show_active_now_section: true,
+    };
+  }
+
+  function getPrefs() {
+    return { ...defaultPrefs(), ...(me?.preferences || {}) };
+  }
+
+  // Maps a notification's resolved tab (from notifTypeMeta) to the matching
+  // Settings > Notifications toggle. Categories with no matching toggle
+  // (e.g. "other") are always shown.
+  function notifCategoryEnabled(tab) {
+    const p = getPrefs();
+    const map = { message: p.notif_messages, shift: p.notif_shift, lab: p.notif_lab, ai: p.ai_recommendations };
+    if (tab === "ai") return p.notif_critical || p.ai_recommendations; // "critical"/"ai" notifications share the ai tab in notifTypeMeta
+    return map[tab] !== undefined ? map[tab] : true;
+  }
+
+  async function savePrefs(patch) {
+    const next = { ...getPrefs(), ...patch };
+    me.preferences = next;
+    const { error } = await supabaseClient.from("profiles").update({ preferences: next }).eq("user_id", me.user_id);
+    return error;
+  }
+
+  const Settings = {
+    open(tab) {
+      settingsActiveTab = tab || settingsActiveTab || "profile";
+      document.getElementById("settings-overlay").classList.add("show");
+      document.getElementById("settings-panel").classList.add("show");
+      document.body.classList.add("overlay-open");
+      requestAnimationFrame(() => {
+        document.getElementById("settings-overlay").classList.add("in");
+        document.getElementById("settings-panel").classList.add("in");
+      });
+      Settings.renderTabs();
+      Settings.renderActiveTab();
+    },
+    close() {
+      document.getElementById("settings-overlay").classList.remove("in");
+      document.getElementById("settings-panel").classList.remove("in");
+      document.body.classList.remove("overlay-open");
+      setTimeout(() => {
+        document.getElementById("settings-overlay").classList.remove("show");
+        document.getElementById("settings-panel").classList.remove("show");
+      }, 180);
+    },
+
+    renderTabs() {
+      document.querySelectorAll(".settings-tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.settingsTab === settingsActiveTab);
+      });
+    },
+
+    renderActiveTab() {
+      const map = {
+        profile: Settings.renderProfileInfoTab,
+        security: Settings.renderSecurityTab,
+      };
+      (map[settingsActiveTab] || Settings.renderProfileInfoTab)();
+    },
+
+    // ── Profile info ──
+    renderProfileInfoTab() {
+      const content = document.getElementById("settings-content");
+      content.innerHTML = `
+        <div class="settings-section-title">Profile info</div>
+        <div class="info-card" id="settings-info-card">
+          <div class="info-photo-wrap" id="settings-info-photo-wrap"></div>
+          <div class="info-details">
+            <h2 id="settings-info-name-h2">—</h2>
+            <div class="info-row"><span class="info-label">Title</span><span id="settings-info-title">—</span></div>
+            <div class="info-row"><span class="info-label">Department</span><span id="settings-info-dept">—</span></div>
+            <div class="info-row"><span class="info-label">Specialty</span><span id="settings-info-specialty">—</span></div>
+            <div class="info-row"><span class="info-label">Staff ID</span><span id="settings-info-id">—</span></div>
+            <div class="info-row"><span class="info-label">Status</span><span id="settings-info-status">—</span></div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("settings-info-photo-wrap").innerHTML = avatarHtml(me, "lg");
+      document.getElementById("settings-info-name-h2").textContent = me.full_name;
+      document.getElementById("settings-info-title").textContent = me.title || "Duty Doctor";
+      document.getElementById("settings-info-dept").textContent = me.department || "—";
+      document.getElementById("settings-info-specialty").textContent = me.specialty || "—";
+      document.getElementById("settings-info-id").textContent = me.doctor_code || me.user_id.slice(0, 8);
+      document.getElementById("settings-info-status").textContent = me.status === "inactive" ? "Inactive" : "Active";
+    },
+
+    // ── Account & Security ──
+    renderSecurityTab() {
+      const content = document.getElementById("settings-content");
+      content.innerHTML = `
+        <div class="settings-section-title">Account &amp; Security</div>
+        <div class="settings-section-sub">Only the features below are backed by real functionality right now.</div>
+
+        <div class="settings-kv-row"><span class="k">Signed in as</span><span>${aounEscape(authUserEmail || me.email || "—")}</span></div>
+        <div class="settings-kv-row"><span class="k">Last login</span><span id="settings-last-login">${lastSignInAt ? formatDateTime(lastSignInAt) : "—"}</span></div>
+
+        <div style="margin-top:22px;">
+          <div class="settings-field"><label>Current password</label><input type="password" id="settings-pw-current" autocomplete="current-password"></div>
+          <div class="settings-grid-2">
+            <div class="settings-field"><label>New password</label><input type="password" id="settings-pw-new" autocomplete="new-password"></div>
+            <div class="settings-field"><label>Confirm new password</label><input type="password" id="settings-pw-confirm" autocomplete="new-password"></div>
+          </div>
+          <button class="settings-save-btn" id="settings-pw-save">Change password</button>
+          <span class="settings-save-note" id="settings-pw-note"></span>
+        </div>
+
+        <div style="margin-top:26px;">
+          <button class="settings-btn-danger" id="settings-signout-btn"><i class="ti ti-logout"></i> Sign out</button>
+        </div>
+
+        <div class="settings-coming-soon-box">
+          <b>Coming soon:</b> Two-Factor Authentication, Active Device Sessions, and Login History. These need backend support that isn't wired up yet, so they're intentionally left out rather than shown as non-functional toggles.
+        </div>
+      `;
+
+      document.getElementById("settings-pw-save").addEventListener("click", async () => {
+        const btn = document.getElementById("settings-pw-save");
+        const note = document.getElementById("settings-pw-note");
+        const current = document.getElementById("settings-pw-current").value;
+        const next = document.getElementById("settings-pw-new").value;
+        const confirmPw = document.getElementById("settings-pw-confirm").value;
+        note.textContent = ""; note.classList.remove("is-error");
+
+        if (!current || !next || !confirmPw) { note.textContent = "Fill in all three fields."; note.classList.add("is-error"); return; }
+        if (next.length < 6) { note.textContent = "New password must be at least 6 characters."; note.classList.add("is-error"); return; }
+        if (next !== confirmPw) { note.textContent = "New passwords don't match."; note.classList.add("is-error"); return; }
+
+        btn.disabled = true; btn.textContent = "Verifying…";
+
+        // Re-authenticate with the current password before allowing a change —
+        // updateUser() alone doesn't ask for the current password.
+        const { error: verifyError } = await supabaseClient.auth.signInWithPassword({ email: authUserEmail || me.email, password: current });
+        if (verifyError) {
+          note.textContent = "Current password is incorrect."; note.classList.add("is-error");
+          btn.disabled = false; btn.textContent = "Change password"; return;
+        }
+
+        btn.textContent = "Saving…";
+        const { error: updateError } = await supabaseClient.auth.updateUser({ password: next });
+        btn.disabled = false; btn.textContent = "Change password";
+
+        if (updateError) { note.textContent = "Couldn't change password: " + updateError.message; note.classList.add("is-error"); return; }
+
+        document.getElementById("settings-pw-current").value = "";
+        document.getElementById("settings-pw-new").value = "";
+        document.getElementById("settings-pw-confirm").value = "";
+        note.textContent = "Password changed ✓";
+        setTimeout(() => { if (note.isConnected) note.textContent = ""; }, 2500);
+      });
+
+      document.getElementById("settings-signout-btn").addEventListener("click", () => {
+        document.getElementById("logout-btn").click();
+      });
+    },
+
+    // Applies stored preferences to the live page — called on load and after saving
+    applyAppPreferences() {
+      const p = getPrefs();
+
+      document.body.classList.toggle("compact-mode", !!p.compact_mode);
+
+      const sizes = { small: "13px", medium: "14px", large: "16px" };
+      document.documentElement.style.setProperty("--font-size-base", sizes[p.font_size] || sizes.medium);
+      document.body.style.fontSize = sizes[p.font_size] || sizes.medium;
+
+      const strings = SETTINGS_LANG_STRINGS[p.language] || SETTINGS_LANG_STRINGS.en;
+      document.documentElement.setAttribute("dir", p.language === "ar" ? "rtl" : "ltr");
+      document.querySelectorAll('.nav-btn[data-tab="home"]').forEach((el) => { el.childNodes[el.childNodes.length - 1].textContent = strings.home; });
+      document.querySelectorAll('.nav-btn[data-tab="chat"]').forEach((el) => { el.childNodes[el.childNodes.length - 1].textContent = strings.chat; });
+      document.querySelectorAll('.nav-btn[data-tab="patients"]').forEach((el) => { el.childNodes[el.childNodes.length - 1].textContent = strings.patients; });
+      const logoutBtn = document.getElementById("logout-btn");
+      if (logoutBtn) logoutBtn.textContent = strings.signOut;
+
+      const scheduleSection = document.getElementById("schedule-wrap")?.previousElementSibling;
+      if (document.getElementById("schedule-wrap")) document.getElementById("schedule-wrap").style.display = p.show_schedule_section ? "" : "none";
+      if (scheduleSection?.classList.contains("section-label")) scheduleSection.style.display = p.show_schedule_section ? "" : "none";
+
+      const activeNowSection = document.getElementById("active-now-list")?.previousElementSibling;
+      if (document.getElementById("active-now-list")) document.getElementById("active-now-list").style.display = p.show_active_now_section ? "" : "none";
+      if (activeNowSection?.classList.contains("section-label")) activeNowSection.style.display = p.show_active_now_section ? "" : "none";
+    },
+
+    playSoundIfEnabled() {
+      if (!getPrefs().sound) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.35);
+      } catch (e) { /* audio not available — silently skip */ }
+    },
+
+    bindEvents() {
+      document.getElementById("desktop-settings-btn")?.addEventListener("click", () => Settings.open("profile"));
+      document.getElementById("mobile-settings-btn")?.addEventListener("click", () => Settings.open("profile"));
+      document.getElementById("settings-close-btn")?.addEventListener("click", Settings.close);
+      document.getElementById("settings-overlay")?.addEventListener("click", Settings.close);
+      document.querySelectorAll(".settings-tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => { settingsActiveTab = btn.dataset.settingsTab; Settings.renderTabs(); Settings.renderActiveTab(); });
+      });
+    },
+  };
+
+  // Retries a network call a few times with increasing delay before giving
+  // up — a single dropped request on bad wifi/4G shouldn't be enough to
+  // break the whole page load.
+  async function withRetry(fn, { retries = 3, baseDelayMs = 800 } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try { return await fn(); }
+      catch (err) {
+        lastErr = err;
+        if (attempt < retries) await new Promise((r) => setTimeout(r, baseDelayMs * Math.pow(2, attempt)));
+      }
+    }
+    throw lastErr;
+  }
+
+  function showConnectionTroubleScreen(retryFn) {
+    document.body.classList.add("app-ready");
+    document.querySelector("main").innerHTML = `
+      <div class="empty-note" style="max-width:420px; margin:60px auto; text-align:center;">
+        <div style="font-size:28px; margin-bottom:10px;">📶</div>
+        <div style="font-weight:700; margin-bottom:6px; color:var(--ink);">Having trouble connecting</div>
+        <p style="margin:0 0 16px;">This can happen on weak wifi or cellular data. Check your connection and try again.</p>
+        <button type="button" class="btn btn-primary" id="connection-retry-btn">Retry</button>
+      </div>
+    `;
+    document.getElementById("connection-retry-btn").addEventListener("click", retryFn);
+  }
+
   async function init() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { data: { session } } = await withRetry(() => supabaseClient.auth.getSession());
     if (!session) { window.location.href = "index.html"; return; }
 
-    const { data: profile } = await supabaseClient
+    const { data: profile } = await withRetry(() => supabaseClient
       .from("profiles")
-      .select("user_id, full_name, department, role, title, head_doctor_id, status, photo_url, doctor_code, specialty")
+      .select("user_id, full_name, department, role, title, head_doctor_id, status, photo_url, doctor_code, specialty, email, phone, medical_license, biography, availability_status, signature_url, preferences")
       .eq("user_id", session.user.id)
-      .single();
+      .single());
 
     if (!profile || (profile.role !== "duty_doctor" && profile.role !== "emergency_duty_doctor")) {
       document.querySelector("main").innerHTML = `<div class="empty-note">You don't have access to this page.</div>`;
+      document.body.classList.add("app-ready");
       return;
     }
 
     me = profile;
+    me.preferences = me.preferences || {};
+    document.body.classList.add("app-ready");
+    authUserEmail = session.user.email || me.email || "";
+    supabaseClient.auth.getUser().then(({ data }) => { lastSignInAt = data?.user?.last_sign_in_at || null; });
     renderInfoCard();
+    Settings.applyAppPreferences();
+    Settings.bindEvents();
 
     // All duty doctors (regular and emergency) can create patients, always
     // into their own department — the field is locked in the click handler
@@ -6202,6 +7354,8 @@
     try {
       await loadAllShifts();
       setupRealtimeShifts();
+      Aoun.checkShiftEndReminder();
+      setInterval(() => Aoun.checkShiftEndReminder(), 60000);
     } catch (err) {
       console.error("Failed to load shifts:", err);
       document.getElementById("schedule-wrap").innerHTML = `<div class="empty-note">Couldn't load the schedule: ${err.message || err}</div>`;
@@ -6241,8 +7395,12 @@
     }
   }
 
-  init();
+  init().catch((err) => {
+    console.error("init() failed after retries:", err);
+    showConnectionTroubleScreen(() => window.location.reload());
+  });
 </script>
 
+<div id="labs-print-area"></div>
 </body>
 </html>

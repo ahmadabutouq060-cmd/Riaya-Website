@@ -3,9 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b3d3a">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
 <script src="assets/theme-toggle.js"></script>
+<script src="assets/register-sw.js"></script>
 <title>Ri'aya — Sign in</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/vendor/supabase-js.min.js"></script>
+<link rel="stylesheet" href="assets/vendor/tabler-icons/tabler-icons.min.css">
 <link rel="stylesheet" href="assets/design-system.css">
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: var(--paper); color: var(--ink); }
@@ -65,18 +70,10 @@
   .mobile-stats { display: none; }
 
   @media (max-width: 860px) {
-    /* One gradient on the page itself — hero and sign-in are no longer
-       two separately-colored blocks, just one continuous background
-       that the content sits on top of. Dark html/body background also
-       means iOS's overscroll bounce shows dark, not white, at the
-       very top/bottom of the page. */
-    html, body { background: var(--teal-950); }
-    body {
-      flex-direction: column;
-      background: linear-gradient(180deg, var(--teal-950) 0%, var(--teal-700) 32%, var(--teal-950) 68%, var(--teal-950) 100%);
-    }
+    body { flex-direction: column; }
+
     .hero-panel {
-      flex: 0 0 auto; padding: 36px 30px 40px; background: transparent;
+      flex: 0 0 auto; padding: 36px 30px 40px;
       display: flex; flex-direction: column; gap: 26px; justify-content: flex-start;
     }
     .hero-copy h1 { font-size: 27px; margin-bottom: 0; }
@@ -86,55 +83,73 @@
     .form-panel {
       flex: 1 1 auto;
       padding: 20px 24px 32px;
-      background: transparent;
       justify-content: flex-start;
       position: relative; z-index: 2;
     }
-    .form-card h2 { color: #f2f7f6; margin-top: 8px; }
-    .form-card .sub { color: rgba(242,247,246,0.7); }
-    .field-label { color: rgba(242,247,246,0.75); }
     .field-input {
+      min-height: 46px; font-size: 16px; /* 16px stops iOS auto-zoom-on-focus */
+    }
+    .btn.submit { min-height: 48px; }
+
+    /* Handover / Access / Records — now a standalone section under the form */
+    .mobile-stats {
+      display: flex; gap: 10px;
+      padding: 0 24px 32px;
+    }
+    .mobile-stats .stat {
+      flex: 1; background: var(--surface-alt);
+      border-radius: var(--radius-md); padding: 10px 8px; text-align: center;
+    }
+    .mobile-stats .stat .label {
+      font-size: 11px; font-weight: 700; color: var(--heading); margin-bottom: 3px;
+    }
+    .mobile-stats .stat .value {
+      font-size: 9.5px; line-height: 1.4; color: var(--muted-strong);
+    }
+
+    /* ── Dark mode only, below ──
+       One gradient on the page itself — hero and sign-in are no longer
+       two separately-colored blocks, just one continuous dark background
+       that the content sits on top of. Dark html background also means
+       iOS's overscroll bounce shows dark, not white, at the top/bottom.
+       In light mode none of this applies — the page just uses the normal
+       light surface/heading/muted variables, same as desktop, so the
+       toggle actually changes how the page looks. */
+    html[data-theme="dark"] { background: var(--teal-950); }
+    html[data-theme="dark"] body {
+      background: linear-gradient(180deg, var(--teal-950) 0%, var(--teal-700) 32%, var(--teal-950) 68%, var(--teal-950) 100%);
+    }
+    html[data-theme="dark"] .hero-panel { background: transparent; }
+    html[data-theme="dark"] .form-panel { background: transparent; }
+    html[data-theme="dark"] .form-card h2 { color: #f2f7f6; margin-top: 8px; }
+    html[data-theme="dark"] .form-card .sub { color: rgba(242,247,246,0.7); }
+    html[data-theme="dark"] .field-label { color: rgba(242,247,246,0.75); }
+    html[data-theme="dark"] .field-input {
       background: rgba(242,247,246,0.08);
       border-color: rgba(242,247,246,0.2);
       color: #f2f7f6;
-      min-height: 46px; font-size: 16px; /* 16px stops iOS auto-zoom-on-focus */
     }
-    .field-input::placeholder { color: rgba(242,247,246,0.4); }
-    .field-input:focus {
+    html[data-theme="dark"] .field-input::placeholder { color: rgba(242,247,246,0.4); }
+    html[data-theme="dark"] .field-input:focus {
       border-color: var(--teal-300);
       box-shadow: 0 0 0 3px rgba(109,207,194,0.18);
     }
     /* Override Safari/Chrome's yellow autofill highlight so a filled-in
        email field still matches the dark input style instead of clashing */
-    .field-input:-webkit-autofill,
-    .field-input:-webkit-autofill:hover,
-    .field-input:-webkit-autofill:focus {
+    html[data-theme="dark"] .field-input:-webkit-autofill,
+    html[data-theme="dark"] .field-input:-webkit-autofill:hover,
+    html[data-theme="dark"] .field-input:-webkit-autofill:focus {
       -webkit-text-fill-color: #f2f7f6;
       -webkit-box-shadow: 0 0 0 1000px rgba(20,116,107,0.35) inset;
       transition: background-color 9999s ease-in-out 0s;
     }
-    .btn.submit { min-height: 48px; }
-    .form-panel .btn-primary { background: var(--surface); color: var(--teal-950); }
-    .form-panel .btn-primary:hover:not(:disabled) { background: #eef7f5; }
-    .footnote { color: rgba(242,247,246,0.55); }
-    .footnote strong { color: rgba(242,247,246,0.85); }
-
-    /* Handover / Access / Records — now a standalone section under the form */
-    .mobile-stats {
-      display: flex; gap: 10px;
-      background: transparent;
-      padding: 0 24px 32px;
-    }
-    .mobile-stats .stat {
-      flex: 1; background: rgba(242,247,246,0.07);
-      border-radius: var(--radius-md); padding: 10px 8px; text-align: center;
-    }
-    .mobile-stats .stat .label {
-      font-size: 11px; font-weight: 700; color: #f2f7f6; margin-bottom: 3px;
-    }
-    .mobile-stats .stat .value {
-      font-size: 9.5px; line-height: 1.4; color: rgba(242,247,246,0.65);
-    }
+    html[data-theme="dark"] .form-panel .btn-primary { background: #f2f7f6; color: var(--teal-950); }
+    html[data-theme="dark"] .form-panel .btn-primary:hover:not(:disabled) { background: #eef7f5; }
+    html[data-theme="dark"] .footnote { color: rgba(242,247,246,0.55); }
+    html[data-theme="dark"] .footnote strong { color: rgba(242,247,246,0.85); }
+    html[data-theme="dark"] .mobile-stats .stat { background: rgba(242,247,246,0.07); }
+    html[data-theme="dark"] .mobile-stats .stat .label { color: #f2f7f6; }
+    html[data-theme="dark"] .mobile-stats .stat .value { color: rgba(242,247,246,0.65); }
   }
 </style>
 </head>
@@ -232,6 +247,28 @@
     statusEl.className = "alert status";
   }
 
+  // Arrived here after idle-logout.js auto-signed someone out — say so,
+  // rather than silently dropping them on a blank login form with no
+  // explanation of why they were logged out.
+  if (new URLSearchParams(window.location.search).get("signedOut") === "idle") {
+    showStatus("You were signed out after a period of inactivity, to help keep patient data secure on shared devices.", "success");
+  }
+
+  // Retries a network call a few times with increasing delay before giving
+  // up — a single dropped request on bad wifi/4G shouldn't be enough to
+  // stop someone signing in.
+  async function withRetry(fn, { retries = 3, baseDelayMs = 800 } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try { return await fn(); }
+      catch (err) {
+        lastErr = err;
+        if (attempt < retries) await new Promise((r) => setTimeout(r, baseDelayMs * Math.pow(2, attempt)));
+      }
+    }
+    throw lastErr;
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearStatus();
@@ -242,13 +279,23 @@
     submitBtn.disabled = true;
     submitBtn.textContent = "Signing in…";
 
-    const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let authData, authError;
+    for (let attempt = 0; ; attempt++) {
+      const result = await supabaseClient.auth.signInWithPassword({ email, password });
+      authData = result.data; authError = result.error;
+      // Only retry genuine network/connection failures — a wrong password
+      // should fail immediately, not retry pointlessly for several seconds.
+      const isRetryable = authError && window.supabase.isAuthRetryableFetchError(authError);
+      if (!isRetryable || attempt >= 3) break;
+      submitBtn.textContent = "Connection trouble, retrying…";
+      await new Promise((r) => setTimeout(r, 800 * Math.pow(2, attempt)));
+    }
 
     if (authError) {
-      showStatus(authError.message || "Sign in failed. Check your email and password.", "error");
+      const message = window.supabase.isAuthRetryableFetchError(authError)
+        ? "Couldn't reach the server — check your connection and try again."
+        : (authError.message || "Sign in failed. Check your email and password.");
+      showStatus(message, "error");
       submitBtn.disabled = false;
       submitBtn.textContent = "Sign in";
       return;
@@ -256,17 +303,24 @@
 
     const userId = authData.user.id;
 
-    const { data: profile, error: profileError } = await supabaseClient
-      .from("profiles")
-      .select("role, full_name")
-      .eq("user_id", userId)
-      .single();
+    let profile, profileError;
+    try {
+      const result = await withRetry(() => supabaseClient
+        .from("profiles")
+        .select("role, full_name")
+        .eq("user_id", userId)
+        .single());
+      profile = result.data; profileError = result.error;
+    } catch (err) {
+      profileError = err;
+    }
 
     if (profileError || !profile) {
-      showStatus(
-        "Signed in, but no profile was found for this account. Contact your administrator.",
-        "error"
-      );
+      const isNetworkIssue = profileError && !profileError.code; // PostgREST errors (e.g. "no rows found") have a .code; thrown network/fetch errors don't
+      const message = isNetworkIssue
+        ? "Signed in, but couldn't load your profile — check your connection and try signing in again."
+        : "Signed in, but no profile was found for this account. Contact your administrator.";
+      showStatus(message, "error");
       submitBtn.disabled = false;
       submitBtn.textContent = "Sign in";
       return;
